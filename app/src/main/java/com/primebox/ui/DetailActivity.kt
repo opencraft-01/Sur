@@ -205,7 +205,8 @@ class DetailActivity : AppCompatActivity() {
         body.addView(Ui.sectionHeader(this, "Episodes", "${episodes.size} total"), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
-            setPadding(0, Ui.dp(this@DetailActivity, 20), 0, Ui.dp(this@DetailActivity, 6))
+            topMargin = Ui.dp(this@DetailActivity, 20)
+            bottomMargin = Ui.dp(this@DetailActivity, 6)
         })
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@DetailActivity)
@@ -252,7 +253,7 @@ class DetailActivity : AppCompatActivity() {
         sourcesBox.removeAllViews()
         sourcesBox.addView(Ui.sectionHeader(this, "Sources", "${links.size} found"), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setPadding(0, 0, 0, Ui.dp(this@DetailActivity, 6)) })
+        ).apply { bottomMargin = Ui.dp(this@DetailActivity, 6) })
         val list = RecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@DetailActivity)
             adapter = LinkAdapter(links, { play(it, title) }, { download(it, title) })
