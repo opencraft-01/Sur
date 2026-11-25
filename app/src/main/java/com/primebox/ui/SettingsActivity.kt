@@ -5,9 +5,11 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Switch
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.widget.NestedScrollView
+import com.primebox.BuildConfig
 import com.primebox.data.Store
 
 class SettingsActivity : AppCompatActivity() {
@@ -18,32 +20,41 @@ class SettingsActivity : AppCompatActivity() {
         val scroll = NestedScrollView(this).apply { setBackgroundColor(Ui.bg(context)) }
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(Ui.dp(context, 16), Ui.dp(context, 20), Ui.dp(context, 16), Ui.dp(context, 32))
+            setPadding(Ui.dp(context, 20), Ui.dp(context, 18), Ui.dp(context, 20), Ui.dp(context, 40))
         }
+        Ui.applyTopInset(column, 8)
         scroll.addView(column)
 
-        column.addView(Ui.textView(context, "Settings", 24f, Ui.text(context), bold = true))
-        column.addView(Ui.spacer(context, 18))
+        column.addView(Ui.iconButton(context, android.R.drawable.ic_menu_revert, Ui.text(context)) { finish() })
+        column.addView(Ui.display(context, "Settings", 28f), LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = Ui.dp(context, 6) })
 
-        // theme
-        column.addView(sectionTitle("Appearance"))
-        val themeOptions = listOf("Follow system", "Light", "Dark")
-        themeOptions.forEachIndexed { index, label ->
-            val selected = Store.themeMode == index
-            val row = LinearLayout(context).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(Ui.dp(context, 14), Ui.dp(context, 14), Ui.dp(context, 14), Ui.dp(context, 14))
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = Ui.dp(context, 12).toFloat()
-                    setColor(if (selected) Ui.surfaceHigh(context) else Ui.surface(context))
-                    setStroke(Ui.dp(context, 1), if (selected) Ui.accent(context) else Ui.stroke(context))
-                }
+        column.addView(Ui.spacer(context, 22))
+        column.addView(Ui.sectionHeader(context, "Appearance").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
+
+        val themes = listOf("System" to 0, "Light" to 1, "Dark" to 2)
+        val themeRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        themes.forEach { (label, value) ->
+            val selected = Store.themeMode == value
+            val card = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(0, Ui.dp(context, 18), 0, Ui.dp(context, 18))
+                background = Ui.ripple(
+                    context,
+                    Ui.shape(
+                        context, 18,
+                        if (selected) Ui.accentSoft(context) else Ui.surface(context),
+                        1,
+                        if (selected) Ui.accent(context) else Ui.stroke(context)
+                    )
+                )
                 isClickable = true
                 setOnClickListener {
-                    Store.themeMode = index
+                    Store.themeMode = value
                     AppCompatDelegate.setDefaultNightMode(
-                        when (index) {
+                        when (value) {
                             1 -> AppCompatDelegate.MODE_NIGHT_NO
                             2 -> AppCompatDelegate.MODE_NIGHT_YES
                             else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
@@ -52,46 +63,54 @@ class SettingsActivity : AppCompatActivity() {
                     recreate()
                 }
             }
-            row.addView(Ui.textView(context, label, 14f, Ui.text(context), bold = selected))
-            column.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, Ui.dp(context, 8))
+            card.addView(Ui.textView(context, label, 13f, if (selected) Ui.accent(context) else Ui.text(context), bold = true))
+            themeRow.addView(card, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                if (value != 2) rightMargin = Ui.dp(context, 8)
             })
         }
+        column.addView(themeRow)
 
-        column.addView(Ui.spacer(context, 18))
-        column.addView(sectionTitle("Playback"))
-        val autoplay = Switch(context).apply {
-            text = "  Autoplay next episode"
-            setTextColor(Ui.text(context))
-            isChecked = Store.autoplayNext
-            setOnCheckedChangeListener { _, checked -> Store.autoplayNext = checked }
-        }
-        column.addView(autoplay)
+        column.addView(Ui.spacer(context, 24))
+        column.addView(Ui.sectionHeader(context, "Playback").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
+        column.addView(rowCard(context, "Autoplay next episode", Store.autoplayNext) { Store.autoplayNext = it })
 
-        column.addView(Ui.spacer(context, 18))
-        column.addView(sectionTitle("Data"))
-        column.addView(Ui.pill(context, "Clear watch history", false) {
+        column.addView(Ui.spacer(context, 24))
+        column.addView(Ui.sectionHeader(context, "Data").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
+        column.addView(Ui.tonalButton(context, "Clear watch history") {
             Store.clearHistory()
-            android.widget.Toast.makeText(context, "History cleared", android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "History cleared", Toast.LENGTH_SHORT).show()
+        })
+        column.addView(Ui.spacer(context, 10))
+        column.addView(Ui.tonalButton(context, "Clear recent searches") {
+            Store.clearRecentSearches()
+            Toast.makeText(context, "Searches cleared", Toast.LENGTH_SHORT).show()
         })
 
-        column.addView(Ui.spacer(context, 18))
-        column.addView(sectionTitle("About"))
+        column.addView(Ui.spacer(context, 24))
+        column.addView(Ui.sectionHeader(context, "About").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
         column.addView(
-            Ui.textView(
+            Ui.body(
                 context,
-                "PrimeBox 1.0.0\nExtension-compatible media centre. Extensions are third-party code — install only repositories you trust.",
-                12f,
-                Ui.textDim(context)
+                "PrimeBox ${BuildConfig.VERSION_NAME}\nExtension-driven media centre. Extensions are third-party code — install only repositories you trust."
             )
         )
 
         setContentView(scroll)
     }
 
-    private fun sectionTitle(value: String): android.widget.TextView =
-        Ui.textView(this, value.uppercase(), 11f, Ui.accent(this), bold = true).apply {
-            letterSpacing = 0.12f
-            setPadding(0, 0, 0, Ui.dp(this@SettingsActivity, 8))
+    private fun rowCard(context: android.content.Context, label: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(Ui.dp(context, 16), Ui.dp(context, 10), Ui.dp(context, 12), Ui.dp(context, 10))
+            background = Ui.shape(context, 16, Ui.surface(context), 1, Ui.stroke(context))
         }
+        row.addView(Ui.textView(context, label, 14f, Ui.text(context)), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val toggle = Switch(context).apply {
+            isChecked = checked
+            setOnCheckedChangeListener { _, value -> onChange(value) }
+        }
+        row.addView(toggle)
+        return row
+    }
 }

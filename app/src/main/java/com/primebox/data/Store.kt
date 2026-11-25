@@ -100,6 +100,37 @@ object Store {
         sp.edit().remove("history").apply()
     }
 
+    // ----------------------------------------------------------- raw values
+
+    fun getRaw(key: String): String? = sp.getString(key, null)
+
+    fun putRaw(key: String, value: String) {
+        sp.edit().putString(key, value).apply()
+    }
+
+    // ------------------------------------------------------ recent searches
+
+    fun recentSearches(): List<String> {
+        val raw = sp.getString("recent_searches", null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.optString(it) }.filter { it.isNotBlank() }
+        }.getOrDefault(emptyList())
+    }
+
+    fun addRecentSearch(query: String) {
+        val clean = query.trim()
+        if (clean.isBlank()) return
+        val updated = (listOf(clean) + recentSearches().filterNot { it.equals(clean, true) }).take(10)
+        val arr = JSONArray()
+        updated.forEach { arr.put(it) }
+        sp.edit().putString("recent_searches", arr.toString()).apply()
+    }
+
+    fun clearRecentSearches() {
+        sp.edit().remove("recent_searches").apply()
+    }
+
     // ------------------------------------------------------------ bookmarks
 
     var autoplayNext: Boolean

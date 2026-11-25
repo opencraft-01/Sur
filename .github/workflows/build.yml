@@ -23,7 +23,27 @@ jobs:
           echo "sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
           "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+
+      - name: Restore signing key
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+        run: |
+          set -e
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::warning::SIGNING_KEY secret is empty - falling back to the keystore committed in the repo"
+            exit 0
+          fi
+          printf '%s' "$SIGNING_KEY" > /tmp/signing_key.txt
+          if head -c 5 /tmp/signing_key.txt | grep -q -- '-----'; then
+            echo "Detected raw PEM/base64 keystore"
+            cp /tmp/signing_key.txt app/primebox.keystore
+          elif base64 -d /tmp/signing_key.txt > /tmp/keystore.bin 2>/dev/null; then
+            echo "Detected base64 encoded keystore"
+            cp /tmp/keystore.bin app/primebox.keystore
+          else
+            cp /tmp/signing_key.txt app/primebox.keystore
+          fi
+          ls -l app/primebox.keystore
 
       - name: Gradle cache
         uses: actions/cache@v4
@@ -34,12 +54,23 @@ jobs:
           key: gradle-${{ hashFiles('**/*.gradle*', 'gradle/libs.versions.toml') }}
 
       - name: Build release APK
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
-      - name: Report size
-        run: ls -lh app/build/outputs/apk/release/ || true
+      - name: Verify signature and size
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          echo "APK: $APK"
+          ls -lh "$APK"
+          "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs "$APK" | head -5
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

@@ -10,17 +10,24 @@ android {
         applicationId = "com.primebox.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         resourceConfigurations += listOf("en")
+
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     signingConfigs {
         create("release") {
-            storeFile = file("primebox.keystore")
-            storePassword = "primebox"
-            keyAlias = "primebox"
-            keyPassword = "primebox"
+            val keystoreFile = file("primebox.keystore")
+            if (keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEY_STORE_PASSWORD") ?: "primebox"
+                keyAlias = System.getenv("ALIAS") ?: "primebox"
+                keyPassword = System.getenv("KEY_PASSWORD") ?: "primebox"
+            }
         }
     }
 
@@ -35,7 +42,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (file("primebox.keystore").exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 
@@ -85,6 +96,9 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
+    implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
+    implementation("androidx.palette:palette-ktx:1.0.0")
 
     implementation("androidx.media3:media3-exoplayer:1.9.3")
     implementation("androidx.media3:media3-exoplayer-hls:1.9.3")
