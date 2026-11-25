@@ -156,12 +156,18 @@ class HomeFragment : Fragment() {
         )
     }
 
-    private fun loadHome() {
+    private fun loadHome(attempt: Int = 0) {
         val context = context ?: return
         val api: MainAPI? = Providers.active()
         if (api == null) {
-            providerLabel.text = "No extension installed"
-            showEmptyState()
+            // Extensions are loaded on a background thread at startup — retry briefly.
+            if (attempt < 12) {
+                providerLabel.text = "Loading extensions…"
+                rows.postDelayed({ if (isAdded) loadHome(attempt + 1) }, 500)
+            } else {
+                providerLabel.text = "No extension installed"
+                showEmptyState()
+            }
             return
         }
         providerLabel.text = "Source: ${api.name}"

@@ -84,11 +84,27 @@ object ExtensionManager {
         }
     }
 
+    /**
+     * Android 14+ refuses to load dex from a writable location, so every plugin is
+     * copied into app-specific external storage and marked read-only before loading.
+     */
+    private fun dexCopy(context: Context, file: File): File {
+        val dir = File(context.getExternalFilesDir(null), "plugins").apply { mkdirs() }
+        val dest = File(dir, file.name)
+        if (!dest.exists() || dest.length() != file.length()) {
+            file.copyTo(dest, overwrite = true)
+            dest.setLastModified(file.lastModified())
+            runCatching { dest.setReadOnly() }
+        }
+        return dest
+    }
+
     fun loadFile(context: Context, file: File, isLocal: Boolean = false): Boolean {
         val path = file.absolutePath
         if (loadedMap.containsKey(path)) return true
         return try {
-            val loader = PathClassLoader(path, context.classLoader)
+            val dexFile = dexCopy(context, file)
+            val loader = PathClassLoader(dexFile.absolutePath, context.classLoader)
             val manifestText = loader.getResourceAsStream("manifest.json")
                 ?.bufferedReader()?.use { it.readText() }
             if (manifestText.isNullOrBlank()) {
@@ -106,14 +122,14 @@ object ExtensionManager {
 
             val clazz = loader.loadClass(className)
             val instance = clazz.getDeclaredConstructor().newInstance() as BasePlugin
-            instance.filename = path
+            instance.filename = dexFile.absolutePath
 
             if (json.optBoolean("requiresResources", false)) {
                 try {
                     val assets = AssetManager::class.java.getDeclaredConstructor().newInstance()
                     val addAssetPath = AssetManager::class.java
                         .getMethod("addAssetPath", String::class.java)
-                    addAssetPath.invoke(assets, path)
+                    addAssetPath.invoke(assets, dexFile.absolutePath)
                     @Suppress("DEPRECATION")
                     val res = Resources(assets, context.resources.displayMetrics, context.resources.configuration)
                     (instance as? Plugin)?.resources = res
@@ -124,7 +140,7 @@ object ExtensionManager {
 
             if (instance is Plugin) instance.load(context) else instance.load()
 
-            val mine = APIHolder.allProviders.toList().filter { it.sourcePlugin == path }
+            val mine = APIHolder.allProviders.toList().filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == path }
             loadedMap[path] = Loaded(name, version, path, mine, isLocal)
             Log.i(TAG, "loaded $name (v$version) with ${mine.size} providers")
             true

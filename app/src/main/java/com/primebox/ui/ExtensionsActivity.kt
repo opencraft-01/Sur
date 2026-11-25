@@ -58,6 +58,23 @@ class ExtensionsActivity : AppCompatActivity() {
         actionRow.addView(Ui.pill(context, "Reload extensions", false) { reloadPlugins() })
         column.addView(actionRow)
 
+        // The drop-in folder (/sdcard/Cloudstream3/plugins) needs all-files access.
+        if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
+            column.addView(Ui.spacer(context, 8))
+            column.addView(Ui.pill(context, "Grant folder access", false) {
+                runCatching {
+                    startActivity(
+                        Intent(
+                            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            android.net.Uri.parse("package:$packageName")
+                        )
+                    )
+                }.onFailure {
+                    startActivity(Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                }
+            })
+        }
+
         column.addView(Ui.spacer(context, 20))
         column.addView(sectionTitle("Active source"))
         providersBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
