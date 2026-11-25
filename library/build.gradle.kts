@@ -41,6 +41,7 @@ kotlin {
             languageSettings {
                 optIn("com.lagradost.cloudstream3.InternalAPI")
                 optIn("com.lagradost.cloudstream3.Prerelease")
+                optIn("kotlin.uuid.ExperimentalUuidApi")
             }
         }
 
