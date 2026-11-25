@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application") version "9.1.1"
-    id("org.jetbrains.kotlin.android") version "2.4.0"
 }
 
 android {
@@ -71,12 +70,6 @@ android {
                 "DebugProbesKt.bin"
             )
         }
-    }
-}
-
-kotlin {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }
 
