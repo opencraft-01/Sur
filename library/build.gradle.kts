@@ -55,7 +55,7 @@ kotlin {
             implementation(libs.kotlinx.serialization.json) // JSON Parser
             implementation(libs.ksoup) // HTML Parser
             implementation(libs.ktor.http)
-            implementation(libs.nicehttp) // HTTP Library
+            implementation(project(":nicehttp")) // HTTP Library
             implementation(libs.rhino) // Run JavaScript
             implementation(libs.bundles.cryptography) // Cryptography
         }
