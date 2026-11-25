@@ -14,7 +14,7 @@ extensions that *you* add.
 - **Drop-in folder** — files placed in `/sdcard/Cloudstream3/plugins/` load on start.
 - **Netflix-style home** — search bar, category chips, auto-scrolling hero carousel,
   horizontal poster rows.
-- **Library tab** — history + downloads (downloads are a placeholder for now).
+- **Library tab** — downloads (real, with progress) and watch history side by side.
 - **FAB extension switcher** — Material 3 bottom sheet to change the active provider.
 - **Sliding nav indicator**, light / dark / system theme.
 
@@ -24,13 +24,22 @@ extensions that *you* add.
 ./gradlew :app:assembleRelease
 ```
 
-Output: `app/build/outputs/apk/release/app-release.apk`
+Output: `app/build/outputs/apk/release/app-release.apk` (arm64-v8a)
 
-The release build is signed with `app/primebox.keystore` (password `primebox`,
-alias `primebox`) so it can be rebuilt and updated in place. **Replace this keystore
-for any real distribution.**
+### Signing (GitHub Actions)
 
-CI builds every push on GitHub Actions and uploads the APK as an artifact.
+The workflow reads four repository secrets:
+
+| Secret | Meaning |
+| --- | --- |
+| `SIGNING_KEY` | base64 of your keystore file (`base64 -w0 my.keystore`) |
+| `KEY_STORE_PASSWORD` | keystore password |
+| `ALIAS` | key alias |
+| `KEY_PASSWORD` | key password |
+
+`SIGNING_KEY` is decoded into `app/primebox.keystore` before the build; local builds
+fall back to the keystore committed in the repo. CI builds every push and uploads the
+signed APK as the `PrimeBox-APK` artifact.
 
 ## Architecture
 
@@ -57,4 +66,4 @@ that extensions link against.
 - Cast, DASH, torrent playback
 - Built-in YouTube extraction (NewPipeExtractor removed; extensions that resolve
   YouTube themselves are unaffected)
-- Real download engine (planned)
+- Torrent / magnet downloads
