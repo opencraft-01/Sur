@@ -8,10 +8,13 @@ import android.os.Environment
 import android.util.Log
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.MainAPI
-import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import dalvik.system.PathClassLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -27,6 +30,11 @@ object ExtensionManager {
 
     private const val TAG = "PrimeBoxExt"
     const val EXT_DIR = "Extensions"
+
+    private const val USER_AGENT =
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
+
+    private val client = OkHttpClient.Builder().build()
 
     data class Loaded(
         val name: String,
@@ -179,8 +187,12 @@ object ExtensionManager {
 
     // ------------------------------------------------------------------- repos
 
-    suspend fun fetchRepo(repoUrl: String): List<RepoPlugin> {
-        val text = app.get(repoUrl).text
+    suspend fun fetchRepo(repoUrl: String): List<RepoPlugin> = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url(repoUrl).header("User-Agent", USER_AGENT).build()
+        val text = client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
+            response.body?.string().orEmpty()
+        }
         val root = if (text.trimStart().startsWith("[")) JSONArray(text) else JSONObject(text)
         val array = when (root) {
             is JSONArray -> root
@@ -210,22 +222,26 @@ object ExtensionManager {
                 )
             )
         }
-        return out
+        out
     }
 
-    suspend fun install(context: Context, plugin: RepoPlugin): Pair<Boolean, String> {
-        return try {
+    suspend fun install(context: Context, plugin: RepoPlugin): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        try {
             val target = File(extensionDir(context), sanitize(plugin.internalName + ".cs3"))
             val tmp = File(context.cacheDir, "dl_${System.currentTimeMillis()}.cs3")
-            val body = app.get(plugin.url).okhttpResponse.body
-            body.byteStream().use { input ->
-                tmp.outputStream().use { output -> input.copyTo(output) }
+            val request = Request.Builder().url(plugin.url).header("User-Agent", USER_AGENT).build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext false to "Download failed: HTTP ${response.code}"
+                val body = response.body ?: return@withContext false to "Download failed: empty body"
+                body.byteStream().use { input ->
+                    tmp.outputStream().use { output -> input.copyTo(output) }
+                }
             }
             if (!plugin.fileHash.isNullOrBlank()) {
                 val hash = sha256(tmp)
                 if (hash != plugin.fileHash) {
                     tmp.delete()
-                    return false to "Hash mismatch — download rejected"
+                    return@withContext false to "Hash mismatch — download rejected"
                 }
             }
             tmp.copyTo(target, overwrite = true)

@@ -122,7 +122,7 @@ class DetailActivity : AppCompatActivity() {
             when (response) {
                 is MovieLoadResponse -> addPlayButton(response.dataUrl, response.name)
                 is TvSeriesLoadResponse -> addEpisodes(response.episodes, response.name, response.posterUrl)
-                is AnimeLoadResponse -> addEpisodes(response.episodes, response.name, response.posterUrl)
+                is AnimeLoadResponse -> addEpisodes(response.episodes.values.flatten(), response.name, response.posterUrl)
                 else -> {
                     val dataUrl = runCatching {
                         response.javaClass.getMethod("getDataUrl").invoke(response) as? String
