@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PrimeBox"
 include(":app", ":library", ":nicehttp")
+include(":sample-extension")

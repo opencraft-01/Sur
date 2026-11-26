@@ -98,75 +98,135 @@ object ExtensionManager {
         }
     }
 
-    /**
-     * Android 14+ refuses to load dex from a writable location, so every plugin is
-     * copied into app-specific external storage and marked read-only first.
-     */
-    private fun dexCopy(context: Context, file: File): File {
-        val base = context.getExternalFilesDir(null) ?: context.filesDir
-        val dir = File(base, "plugins").apply { mkdirs() }
-        val dest = File(dir, file.name)
-        if (!dest.exists() || dest.length() != file.length()) {
-            file.copyTo(dest, overwrite = true)
-            dest.setLastModified(file.lastModified())
-            runCatching { dest.setReadOnly() }
+    // ------------------------------------------------------------- diagnostics
+
+    private val logLines = mutableListOf<String>()
+
+    fun log(line: String) {
+        val stamp = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+        synchronized(logLines) {
+            logLines.add("$stamp  $line")
+            while (logLines.size > 300) logLines.removeAt(0)
         }
-        return dest
+        Log.i(TAG, line)
+    }
+
+    fun diagnostics(): List<String> = synchronized(logLines) { logLines.toList() }
+
+    fun diagnosticsText(context: Context): String = buildString {
+        appendLine("PrimeBox extension diagnostics")
+        appendLine("app files: ${context.filesDir.absolutePath}")
+        appendLine("external : ${context.getExternalFilesDir(null)?.absolutePath}")
+        appendLine("providers: ${APIHolder.allProviders.size}")
+        appendLine("loaded   : ${loadedMap.size}")
+        appendLine("---")
+        diagnostics().forEach { appendLine(it) }
+    }
+
+    // ----------------------------------------------------------- dex staging
+
+    /**
+     * CloudStream loads extensions from internal storage with the file marked
+     * read-only. Android 14+ also accepts app-specific external storage, and some
+     * devices only work on one of the two, so both are staged and tried in turn.
+     */
+    private fun stageCopies(context: Context, file: File): List<File> {
+        val copies = ArrayList<File>(2)
+
+        fun stage(dir: File): File? = try {
+            if (!dir.exists()) dir.mkdirs()
+            val dest = File(dir, file.name)
+            if (!dest.exists() || dest.length() != file.length()) {
+                file.copyTo(dest, overwrite = true)
+                dest.setLastModified(file.lastModified())
+            }
+            runCatching { dest.setReadOnly() }
+            dest
+        } catch (t: Throwable) {
+            log("stage failed in ${dir.name}: ${t.javaClass.simpleName}: ${t.message}")
+            null
+        }
+
+        stage(File(context.filesDir, "dex"))?.let { copies.add(it) }
+        context.getExternalFilesDir(null)?.let { ext -> stage(File(ext, "plugins"))?.let { copies.add(it) } }
+        return copies
     }
 
     fun loadFile(context: Context, file: File, isLocal: Boolean = false): Boolean {
         val path = file.absolutePath
         if (loadedMap.containsKey(path)) return true
-        return try {
-            val dexFile = dexCopy(context, file)
-            val loader = PathClassLoader(dexFile.absolutePath, context.classLoader)
-            val manifestText = loader.getResourceAsStream("manifest.json")
-                ?.bufferedReader()?.use { it.readText() }
-            if (manifestText.isNullOrBlank()) {
-                lastError = "${file.name}: no manifest.json inside the extension"
-                Log.w(TAG, lastError!!)
-                return false
+
+        log("load ${file.name} (${file.length()} bytes, local=$isLocal)")
+        if (file.length() == 0L) {
+            lastError = "${file.name}: file is empty"
+            log("  ✗ ${lastError}")
+            return false
+        }
+
+        val copies = stageCopies(context, file)
+        if (copies.isEmpty()) {
+            lastError = "${file.name}: could not stage the file for loading"
+            log("  ✗ ${lastError}")
+            return false
+        }
+
+        var lastFailure: String? = null
+        for (copy in copies) {
+            try {
+                loadFrom(context, file, copy, isLocal)
+                lastError = null
+                return true
+            } catch (t: Throwable) {
+                lastFailure = "${t.javaClass.simpleName}: ${t.message}"
+                log("  ✗ via ${copy.parentFile?.name}: $lastFailure")
             }
-            val json = JSONObject(manifestText)
-            val className = json.optString("pluginClassName")
-            val version = json.optInt("version", Int.MIN_VALUE)
-            val name = json.optString("name").ifBlank { file.nameWithoutExtension }
-            if (className.isBlank()) {
-                lastError = "${file.name}: manifest.json has no pluginClassName"
-                Log.w(TAG, lastError!!)
-                return false
+        }
+        lastError = "${file.name}: $lastFailure"
+        return false
+    }
+
+    private fun loadFrom(context: Context, original: File, dexFile: File, isLocal: Boolean) {
+        val loader = PathClassLoader(dexFile.absolutePath, context.classLoader)
+        val manifestText = loader.getResourceAsStream("manifest.json")
+            ?.bufferedReader()?.use { it.readText() }
+        if (manifestText.isNullOrBlank()) {
+            throw IllegalStateException("no manifest.json inside the extension (is this a .cs3 file?)")
+        }
+        val json = JSONObject(manifestText)
+        val className = json.optString("pluginClassName")
+        val version = json.optInt("version", Int.MIN_VALUE)
+        val name = json.optString("name").ifBlank { original.nameWithoutExtension }
+        if (className.isBlank()) {
+            throw IllegalStateException("manifest.json has no pluginClassName")
+        }
+        log("  manifest: $name v$version → $className")
+
+        val clazz = loader.loadClass(className)
+        val instance = clazz.getDeclaredConstructor().newInstance() as BasePlugin
+        instance.filename = dexFile.absolutePath
+
+        if (json.optBoolean("requiresResources", false)) {
+            try {
+                val assets = AssetManager::class.java.getDeclaredConstructor().newInstance()
+                val addAssetPath = AssetManager::class.java.getMethod("addAssetPath", String::class.java)
+                addAssetPath.invoke(assets, dexFile.absolutePath)
+                @Suppress("DEPRECATION")
+                val res = Resources(assets, context.resources.displayMetrics, context.resources.configuration)
+                (instance as? Plugin)?.resources = res
+                log("  resources attached")
+            } catch (t: Throwable) {
+                log("  resources failed: ${t.javaClass.simpleName}: ${t.message}")
             }
+        }
 
-            val clazz = loader.loadClass(className)
-            val instance = clazz.getDeclaredConstructor().newInstance() as BasePlugin
-            instance.filename = dexFile.absolutePath
+        if (instance is Plugin) instance.load(context) else instance.load()
 
-            if (json.optBoolean("requiresResources", false)) {
-                try {
-                    val assets = AssetManager::class.java.getDeclaredConstructor().newInstance()
-                    val addAssetPath = AssetManager::class.java
-                        .getMethod("addAssetPath", String::class.java)
-                    addAssetPath.invoke(assets, dexFile.absolutePath)
-                    @Suppress("DEPRECATION")
-                    val res = Resources(assets, context.resources.displayMetrics, context.resources.configuration)
-                    (instance as? Plugin)?.resources = res
-                } catch (t: Throwable) {
-                    Log.w(TAG, "resource attach failed for $name", t)
-                }
-            }
-
-            if (instance is Plugin) instance.load(context) else instance.load()
-
-            val mine = APIHolder.allProviders.toList()
-                .filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == path }
-            loadedMap[path] = Loaded(name, version, path, mine, isLocal)
-            lastError = null
-            Log.i(TAG, "loaded $name (v$version) with ${mine.size} providers")
-            true
-        } catch (t: Throwable) {
-            lastError = "${file.name}: ${t.javaClass.simpleName}: ${t.message}"
-            Log.e(TAG, "failed loading ${file.name}", t)
-            false
+        val mine = APIHolder.allProviders.toList()
+            .filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == original.absolutePath }
+        loadedMap[original.absolutePath] = Loaded(name, version, original.absolutePath, mine, isLocal)
+        log("  ✓ loaded $name (v$version) with ${mine.size} provider(s)")
+        if (mine.isEmpty()) {
+            log("  ! no providers registered by this extension")
         }
     }
 

@@ -60,6 +60,10 @@ class ExtensionsActivity : AppCompatActivity() {
         actionRow.addView(Ui.tonalButton(context, "Reload") { reloadPlugins() })
         column.addView(actionRow)
         column.addView(Ui.spacer(context, 8))
+        column.addView(Ui.tonalButton(context, "Diagnostics / load log") {
+            startActivity(Intent(context, DiagnosticsActivity::class.java))
+        })
+        column.addView(Ui.spacer(context, 8))
         column.addView(Ui.tonalButton(context, "Scan Download folder for .cs3") {
             val (count, message) = ExtensionManager.scanDownloads(context)
             Toast.makeText(context, message, Toast.LENGTH_LONG).show()

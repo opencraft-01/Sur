@@ -72,6 +72,25 @@ jobs:
           ls -lh "$APK"
           "$ANDROID_HOME"/build-tools/36.0.0/apksigner verify --print-certs "$APK" | head -5
 
+      - name: Build reference test extension (.cs3)
+        run: |
+          ./gradlew :sample-extension:jar --no-daemon
+          JAR=$(ls sample-extension/build/libs/*.jar | head -1)
+          echo "jar: $JAR"
+          mkdir -p /tmp/ext
+          "$ANDROID_HOME"/build-tools/36.0.0/d8 --min-api 23 \
+            --lib "$ANDROID_HOME"/platforms/android-36/android.jar \
+            --output /tmp/ext "$JAR"
+          printf '%s' '{"name":"PrimeBox Test","version":1,"pluginClassName":"com.primebox.sample.PrimeBoxTestPlugin","requiresResources":false}' > /tmp/ext/manifest.json
+          cd /tmp/ext && zip -q PrimeBoxTest.cs3 manifest.json classes.dex && ls -l PrimeBoxTest.cs3
+
+      - name: Upload test extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: PrimeBox-TestExtension
+          path: /tmp/ext/PrimeBoxTest.cs3
+          if-no-files-found: error
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
