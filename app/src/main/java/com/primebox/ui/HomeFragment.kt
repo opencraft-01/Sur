@@ -50,6 +50,11 @@ class HomeFragment : Fragment() {
     private var currentProvider: String? = null
     private var loadJob: kotlinx.coroutines.Job? = null
     private var rowsAdded = 0
+    private var allRows: List<HomeCache.Row> = emptyList()
+    private var selectedType: String? = null
+    private lateinit var typeChipsRow: LinearLayout
+    private lateinit var typeChipsScroll: android.widget.HorizontalScrollView
+    private lateinit var rowChipsScroll: android.widget.HorizontalScrollView
 
     private companion object {
         const val CACHE_TTL_MS = 30L * 60L * 1000L
@@ -145,15 +150,27 @@ class HomeFragment : Fragment() {
         providerRow.addView(providerLabel, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = Ui.dp(context, 10) })
         column.addView(providerRow)
 
+        // --------------------------------------------- CloudStream type chips
+        typeChipsRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(Ui.dp(context, 20), Ui.dp(context, 10), Ui.dp(context, 20), 0)
+        }
+        typeChipsScroll = android.widget.HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(typeChipsRow)
+        }
+        column.addView(typeChipsScroll)
+
         // ------------------------------------------------------ row chips
         chipsRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(Ui.dp(context, 20), Ui.dp(context, 12), Ui.dp(context, 20), Ui.dp(context, 2))
         }
-        column.addView(android.widget.HorizontalScrollView(context).apply {
+        rowChipsScroll = android.widget.HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             addView(chipsRow)
-        })
+        }
+        column.addView(rowChipsScroll)
 
         // --------------------------------------------------------- carousel
         heroWrap = FrameLayout(context).apply { visibility = View.GONE }
@@ -182,6 +199,19 @@ class HomeFragment : Fragment() {
         column.addView(dots)
 
         rowsHost = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        column.addView(rowsHost)
+
+        // CloudStream order: carousel first, then the chips, then the rows
+        column.removeAllViews()
+        column.addView(header)
+        column.addView(search)
+        column.addView(heroWrap, LinearLayout.LayoutParams(-1, Ui.dp(context, 300)).apply {
+            topMargin = Ui.dp(context, 10)
+        })
+        column.addView(dots)
+        column.addView(providerRow)
+        column.addView(typeChipsScroll)
+        column.addView(rowChipsScroll)
         column.addView(rowsHost)
 
         loadHome()
@@ -272,6 +302,8 @@ class HomeFragment : Fragment() {
         // 1) cached content first — instant, no network
         val cached = HomeCache.load(context, providerName)
         if (cached != null && cached.rows.isNotEmpty()) {
+            allRows = cached.rows
+            buildTypeChips(api)
             renderRows(cached.rows, fromCache = true)
         } else if (rowsHost.childCount == 0) {
             showSkeleton()
@@ -321,6 +353,8 @@ class HomeFragment : Fragment() {
                     rowsAdded++
                     kotlinx.coroutines.delay(60)
                 }
+                allRows = rows
+                buildTypeChips(api)
                 buildChips(rows.map { it.name })
                 if (rows.isNotEmpty()) setHero(rows.first().items)
                 HomeCache.save(context, providerName, rows)
@@ -364,13 +398,60 @@ class HomeFragment : Fragment() {
     }
 
     private fun renderRows(rows: List<HomeCache.Row>, fromCache: Boolean) {
+        allRows = rows
+        rowsAdded = 0
         rowsHost.removeAllViews()
         rowAdapters.clear()
         rowBlocks.clear()
-        rows.forEach { applyRow(it) }
-        buildChips(rows.map { it.name })
-        if (rows.isNotEmpty()) setHero(rows.first().items)
+        val visible = filteredRows()
+        visible.forEach { applyRow(it) }
+        buildChips(visible.map { it.name })
+        if (visible.isNotEmpty()) setHero(visible.first().items)
         if (fromCache && rows.isNotEmpty()) refresh.isRefreshing = false
+    }
+
+    /** CloudStream behaviour: the type chips filter every row in place. */
+    private fun filteredRows(): List<HomeCache.Row> {
+        val type = selectedType ?: return allRows
+        return allRows.mapNotNull { row ->
+            val items = row.items.filter { it.type.equals(type, true) }
+            if (items.isEmpty()) null else row.copy(items = items)
+        }
+    }
+
+    private fun applyTypeFilter() {
+        rowsAdded = 0
+        rowsHost.removeAllViews()
+        rowAdapters.clear()
+        rowBlocks.clear()
+        val visible = filteredRows()
+        visible.forEach { applyRow(it) }
+        buildChips(visible.map { it.name })
+        if (visible.isNotEmpty()) setHero(visible.first().items) else heroWrap.visibility = View.GONE
+    }
+
+    private fun buildTypeChips(api: MainAPI) {
+        val context = context ?: return
+        typeChipsRow.removeAllViews()
+        val types = linkedSetOf<String>()
+        api.supportedTypes.forEach { types.add(it.name) }
+        allRows.forEach { row -> row.items.forEach { card -> card.type?.let { types.add(it) } } }
+
+        typeChipsRow.addView(Ui.pill(context, "\uD83C\uDFB2 Random", false) {
+            val pool = filteredRows().flatMap { it.items }
+            if (pool.isNotEmpty()) openDetail(pool.random())
+        }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = Ui.dp(context, 8) })
+
+        val options = listOf<String?>(null) + types.toList()
+        options.forEach { type ->
+            val label = type ?: "All"
+            val selected = (selectedType == type)
+            typeChipsRow.addView(Ui.pill(context, label, selected) {
+                selectedType = type
+                buildTypeChips(api)
+                applyTypeFilter()
+            }, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = Ui.dp(context, 8) })
+        }
     }
 
     /** Adds a row, or updates it in place when it already exists (incremental refresh). */
@@ -395,7 +476,7 @@ class HomeFragment : Fragment() {
             Ui.textView(context, row.name, 15f, Ui.text(context), bold = true, maxLines = 1),
             LinearLayout.LayoutParams(0, -2, 1f)
         )
-        header.addView(Ui.textView(context, "${row.items.size}  ›", 12f, Ui.textDim(context)))
+        header.addView(Ui.textView(context, "›", 18f, Ui.textDim(context)))
         block.addView(header)
 
         val adapter = PosterAdapter(row.items, cardW, cardH) { openDetail(it) }
