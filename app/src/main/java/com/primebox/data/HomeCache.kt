@@ -11,7 +11,7 @@ import java.io.File
  */
 object HomeCache {
 
-    data class Row(val name: String, val items: List<Card>)
+    data class Row(val name: String, val items: List<Card>, val horizontal: Boolean = false)
     data class Home(val provider: String, val time: Long, val rows: List<Row>)
 
     private const val FILE = "home_cache.json"
@@ -35,7 +35,12 @@ object HomeCache {
                             .put("api", card.api ?: "")
                     )
                 }
-                array.put(JSONObject().put("name", row.name).put("items", items))
+                array.put(
+                    JSONObject()
+                        .put("name", row.name)
+                        .put("horizontal", row.horizontal)
+                        .put("items", items)
+                )
             }
             root.put(
                 provider,
@@ -77,7 +82,7 @@ object HomeCache {
                         )
                     )
                 }
-                rows.add(Row(rowObj.optString("name"), items))
+                rows.add(Row(rowObj.optString("name"), items, rowObj.optBoolean("horizontal", false)))
             }
             Home(provider, entry.optLong("time"), rows)
         }.getOrNull()

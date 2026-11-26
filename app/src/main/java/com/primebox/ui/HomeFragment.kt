@@ -294,8 +294,8 @@ class HomeFragment : Fragment() {
             }
 
             val rows = response.items.map { list ->
-                HomeCache.Row(list.name, list.list.map { Card.from(it) })
-            }
+                HomeCache.Row(list.name, list.list.map { Card.from(it) }, list.isHorizontalImages)
+            }.sortedBy { rowPriority(it.name) }
             rows.forEach { row ->
                 applyRow(row)
                 kotlinx.coroutines.delay(90)
@@ -338,36 +338,54 @@ class HomeFragment : Fragment() {
             existing.submit(row.items)
             return
         }
+        val wide = row.horizontal
+        val cardW = if (wide) 200 else 114
+        val cardH = if (wide) 114 else 180
+
         val block = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(Ui.dp(context, 20), Ui.dp(context, 16), Ui.dp(context, 20), Ui.dp(context, 8))
+            setPadding(Ui.dp(context, 20), Ui.dp(context, 18), Ui.dp(context, 20), Ui.dp(context, 8))
         }
         header.addView(
-            Ui.headline(context, row.name),
+            Ui.textView(context, row.name, 15f, Ui.text(context), bold = true, maxLines = 1),
             LinearLayout.LayoutParams(0, -2, 1f)
         )
-        header.addView(Ui.textView(context, "${row.items.size}", 11.5f, Ui.textDim(context)))
+        header.addView(Ui.textView(context, "${row.items.size}  ›", 12f, Ui.textDim(context)))
         block.addView(header)
 
-        val adapter = PosterAdapter(row.items, 124, 176) { openDetail(it) }
+        val adapter = PosterAdapter(row.items, cardW, cardH) { openDetail(it) }
         val recycler = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context, RecyclerView.HORIZONTAL, false)
             this.adapter = adapter
-            setPadding(Ui.dp(context, 14), 0, Ui.dp(context, 8), 0)
+            setPadding(Ui.dp(context, 14), 0, Ui.dp(context, 4), 0)
             clipToPadding = false
             overScrollMode = View.OVER_SCROLL_NEVER
             setHasFixedSize(true)
             itemAnimator = null
         }
-        block.addView(recycler, LinearLayout.LayoutParams(-1, Ui.dp(context, 240)))
+        block.addView(recycler, LinearLayout.LayoutParams(-1, Ui.dp(context, cardH + 12)))
         rowsHost.addView(block)
         rowAdapters[row.name] = adapter
         rowBlocks[row.name] = block
 
-        // warm the first few thumbnails right away
         row.items.take(6).forEach { ImageLoaderPrefetch(it) }
+    }
+
+    /** Trending / language rows float to the top, like CloudStream's ordered home. */
+    private fun rowPriority(name: String): Int {
+        val n = name.lowercase()
+        var score = 100
+        if (n.contains("trending") || n.contains("top") || n.contains("popular") || n.contains("hot")) score -= 40
+        if (n.contains("new") || n.contains("latest") || n.contains("recent") || n.contains("release")) score -= 20
+        if (n.contains("hindi")) score -= 16
+        if (n.contains("bengali") || n.contains("bangla")) score -= 15
+        if (n.contains("tamil") || n.contains("telugu") || n.contains("malayalam") || n.contains("kannada")) score -= 13
+        if (n.contains("dubbed") || n.contains("web series")) score -= 6
+        if (n.contains("movie")) score -= 5
+        if (n.contains("anime")) score += 4
+        return score
     }
 
     private fun ImageLoaderPrefetch(card: Card) {
@@ -376,7 +394,7 @@ class HomeFragment : Fragment() {
 
     private fun setHero(cards: List<Card>) {
         val context = context ?: return
-        val items = cards.take(7)
+        val items = cards.take(8)
         if (items.isEmpty()) return
         heroWrap.visibility = View.VISIBLE
         carousel.adapter = HeroAdapter(items, { openDetail(it) }, { openDetail(it) })
@@ -433,11 +451,11 @@ class HomeFragment : Fragment() {
             override fun run() {
                 if (!isAdded) return
                 carousel.setCurrentItem((carousel.currentItem + 1) % count, true)
-                handler.postDelayed(this, 6500)
+                handler.postDelayed(this, 5000)
             }
         }
         autoScroll = task
-        handler.postDelayed(task, 6500)
+        handler.postDelayed(task, 5000)
     }
 
     private fun stopAutoScroll() {

@@ -17,7 +17,10 @@ import com.primebox.data.Downloader
 import com.primebox.data.Store
 import com.primebox.img.ImageLoader
 
-/** Poster card with a shimmer placeholder until the thumbnail arrives. */
+/**
+ * CloudStream-style poster card: fixed 114x180 (or 200x114 for wide rows), rounded,
+ * title overlaid at the bottom over a scrim, shimmer until the thumbnail arrives.
+ */
 class PosterAdapter(
     private var items: List<Card>,
     private val cardWidthDp: Int,
@@ -31,45 +34,49 @@ class PosterAdapter(
         notifyDataSetChanged()
     }
 
-    inner class VH(val root: LinearLayout) : RecyclerView.ViewHolder(root) {
+    inner class VH(val root: FrameLayout) : RecyclerView.ViewHolder(root) {
         val image: ImageView = ImageView(root.context)
-        val shimmer: View = skeletonFill(root.context, 18)
-        val title: TextView = Ui.textView(root.context, "", 12.5f, Ui.text(root.context), bold = true, maxLines = 2)
+        val shimmer: View = skeletonFill(root.context, 14)
+        val title: TextView = Ui.textView(root.context, "", 11.5f, Color.WHITE, bold = true, maxLines = 2)
         val badge: TextView = Ui.badge(root.context, "")
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
         val context = parent.context
-        val column = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = RecyclerView.LayoutParams(Ui.dp(context, cardWidthDp), ViewGroup.LayoutParams.WRAP_CONTENT)
-            setPadding(0, 0, Ui.dp(context, 12), 0)
-        }
-        val holder = VH(column)
-
-        val frame = FrameLayout(context).apply {
-            background = Ui.shape(context, 18, Ui.surfaceHigh(context))
+        val card = FrameLayout(context).apply {
+            layoutParams = RecyclerView.LayoutParams(Ui.dp(context, cardWidthDp), Ui.dp(context, cardHeightDp)).apply {
+                rightMargin = Ui.dp(context, 10)
+            }
+            background = Ui.shape(context, 14, Ui.surfaceHigh(context))
             clipToOutline = true
         }
+        val holder = VH(card)
+
         holder.image.scaleType = ImageView.ScaleType.CENTER_CROP
-        frame.addView(holder.image, FrameLayout.LayoutParams(-1, -1))
-        frame.addView(holder.shimmer, FrameLayout.LayoutParams(-1, -1))
-        frame.addView(
+        card.addView(holder.image, FrameLayout.LayoutParams(-1, -1))
+        card.addView(holder.shimmer, FrameLayout.LayoutParams(-1, -1))
+        card.addView(
             View(context).apply { background = Ui.bottomFade() },
-            FrameLayout.LayoutParams(-1, Ui.dp(context, 56), Gravity.BOTTOM)
+            FrameLayout.LayoutParams(-1, Ui.dp(context, if (showTitles) 72 else 48), Gravity.BOTTOM)
         )
-        frame.addView(
+        card.addView(
             holder.badge,
-            FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
-                leftMargin = Ui.dp(context, 8)
-                bottomMargin = Ui.dp(context, 8)
+            FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+                topMargin = Ui.dp(context, 6)
+                rightMargin = Ui.dp(context, 6)
             }
         )
-        column.addView(frame, LinearLayout.LayoutParams(-1, Ui.dp(context, cardHeightDp)))
         if (showTitles) {
-            column.addView(holder.title, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(context, 8) })
+            card.addView(
+                holder.title,
+                FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+                    leftMargin = Ui.dp(context, 7)
+                    rightMargin = Ui.dp(context, 7)
+                    bottomMargin = Ui.dp(context, 6)
+                }
+            )
         }
-        column.setOnClickListener {
+        card.setOnClickListener {
             val position = holder.bindingAdapterPosition
             if (position != RecyclerView.NO_POSITION) onClick(items[position])
         }
@@ -87,18 +94,12 @@ class PosterAdapter(
             holder.badge.visibility = View.VISIBLE
             holder.badge.text = quality
             holder.badge.setTextColor(Color.WHITE)
-            holder.badge.background = Ui.shape(holder.root.context, 8, Ui.withAlpha(Color.BLACK, 0.55f))
+            holder.badge.background = Ui.shape(holder.root.context, 6, Ui.withAlpha(Color.BLACK, 0.55f))
         }
-        ImageLoader.load(item.poster, holder.image, null, 420, holder.shimmer)
+        ImageLoader.load(item.poster, holder.image, null, 400, holder.shimmer)
     }
 
     override fun getItemCount(): Int = items.size
-
-    private fun bytes(value: Long): String = when {
-        value <= 0 -> "0 MB"
-        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
-        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
-    }
 }
 
 /** Large hero page with shimmer while the artwork loads. */
@@ -187,7 +188,13 @@ class HeroAdapter(
         item.type?.let { bits.add(it) }
         item.quality?.let { bits.add(it) }
         holder.meta.text = bits.joinToString("   •   ")
-        holder.badge.text = item.type ?: "TRENDING"
+        // Google TV style ranking chip: TOP 1, TOP 2, …
+        holder.badge.text = if (position < 10) "TOP ${position + 1}" else (item.type ?: "TRENDING")
+        holder.badge.background = Ui.shape(
+            holder.root.context, 8,
+            Ui.withAlpha(if (position < 3) Ui.accent(holder.root.context) else Color.BLACK, 0.62f)
+        )
+        holder.badge.setTextColor(if (position < 3) Color.parseColor("#04120C") else Color.WHITE)
     }
 
     override fun getItemCount(): Int = items.size
