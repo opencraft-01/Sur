@@ -131,6 +131,11 @@ object Store {
         sp.edit().remove("recent_searches").apply()
     }
 
+    /** Timestamp of the last silent update check. */
+    var lastUpdateCheck: Long
+        get() = sp.getLong("last_update_check", 0L)
+        set(value) = sp.edit().putLong("last_update_check", value).apply()
+
     // ------------------------------------------------------------ bookmarks
 
     var autoplayNext: Boolean

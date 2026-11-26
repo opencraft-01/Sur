@@ -15,6 +15,7 @@ import androidx.core.widget.NestedScrollView
 import androidx.lifecycle.lifecycleScope
 import com.primebox.data.Store
 import com.primebox.ext.ExtensionManager
+import com.primebox.ext.Languages
 import com.primebox.ext.Providers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -187,7 +188,11 @@ class ExtensionsActivity : AppCompatActivity() {
                 }
             }
             row.addView(Ui.title(context, api.name), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            if (api.name == active) row.addView(Ui.badge(context, "ACTIVE", Ui.onAccent(context), Ui.accent(context)))
+            row.addView(Ui.badge(context, Languages.chip(api.lang), Ui.accent(context), Ui.accentSoft(context)))
+            if (api.name == active) {
+                row.addView(Ui.horizontalSpace(context, 6))
+                row.addView(Ui.badge(context, "ACTIVE", Ui.onAccent(context), Ui.accent(context)))
+            }
             providersBox.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, Ui.dp(context, 8))
             })

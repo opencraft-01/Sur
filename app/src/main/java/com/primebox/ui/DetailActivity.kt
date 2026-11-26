@@ -75,6 +75,8 @@ class DetailActivity : AppCompatActivity() {
             setBackgroundColor(Ui.surfaceHigh(context))
         }
         hero.addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight + Ui.dp(context, 120)))
+        val heroShimmer = skeletonFill(context, 0)
+        hero.addView(heroShimmer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight + Ui.dp(context, 120)))
         hero.addView(
             View(context).apply { background = Ui.bottomFade() },
             FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight + Ui.dp(context, 120))
@@ -90,7 +92,7 @@ class DetailActivity : AppCompatActivity() {
         })
         Ui.applyTopInset(back, 4)
         column.addView(hero, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, heroHeight))
-        ImageLoader.load(posterArg, backdrop, targetPx = 900)
+        ImageLoader.load(posterArg, backdrop, null, 900, heroShimmer)
 
         scroll.setOnScrollChangeListener { _, _, scrollY, _, _ ->
             backdrop.translationY = scrollY * 0.35f

@@ -26,6 +26,7 @@ import androidx.fragment.app.Fragment
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.primebox.data.Store
+import com.primebox.ext.Languages
 import com.primebox.ext.Providers
 
 class MainActivity : AppCompatActivity() {
@@ -168,11 +169,14 @@ class MainActivity : AppCompatActivity() {
                 val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                 info.addView(Ui.title(this, api.name))
                 val sub = mutableListOf<String>()
-                if (api.lang.isNotBlank()) sub.add(api.lang.uppercase())
                 if (api.mainUrl.isNotBlank() && api.mainUrl != "NONE") sub.add(api.mainUrl.removePrefix("https://").removePrefix("http://"))
                 info.addView(Ui.textView(this, sub.joinToString("   •   "), 11f, Ui.textDim(this), maxLines = 1))
                 row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                if (api.name == active) row.addView(Ui.badge(this, "ACTIVE", Ui.onAccent(this), Ui.accent(this)))
+                row.addView(Ui.badge(this, Languages.chip(api.lang), Ui.accent(this), Ui.accentSoft(this)))
+                if (api.name == active) {
+                    row.addView(Ui.horizontalSpace(this, 6))
+                    row.addView(Ui.badge(this, "ACTIVE", Ui.onAccent(this), Ui.accent(this)))
+                }
                 listBox.addView(
                     row,
                     LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

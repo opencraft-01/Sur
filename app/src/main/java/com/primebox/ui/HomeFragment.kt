@@ -178,7 +178,54 @@ class HomeFragment : Fragment() {
         column.addView(rowsHost)
 
         loadHome()
+        maybeCheckUpdate()
         return refresh
+    }
+
+    /** Silent update check (max once every 6 hours) with a tappable banner. */
+    private fun maybeCheckUpdate() {
+        val context = context ?: return
+        val now = System.currentTimeMillis()
+        if (now - Store.lastUpdateCheck < 6L * 60L * 60L * 1000L) return
+        Store.lastUpdateCheck = now
+        viewLifecycleOwner.lifecycleScope.launch {
+            val info = com.primebox.data.Updater.check() ?: return@launch
+            if (info.versionCode <= com.primebox.data.Updater.currentCode()) return@launch
+            if (!isAdded) return@launch
+            val banner = Ui.pill(context, "\u2B06  Update ${info.versionName} available", true) {
+                downloadUpdate(info)
+            }
+            (rowsHost.parent as? android.view.ViewGroup)?.let { parent ->
+                // place the banner right under the provider row
+                val column = parent as LinearLayout
+                if (column.childCount > 0) {
+                    column.addView(banner, 3.coerceAtMost(column.childCount), LinearLayout.LayoutParams(-2, -2).apply {
+                        setMargins(Ui.dp(context, 20), Ui.dp(context, 6), Ui.dp(context, 20), 0)
+                    })
+                }
+            }
+        }
+    }
+
+    private fun downloadUpdate(info: com.primebox.data.Updater.Info) {
+        val context = context ?: return
+        val dialog = android.app.AlertDialog.Builder(context)
+            .setTitle("Updating to ${info.versionName}")
+            .setMessage("Downloading… 0%")
+            .setCancelable(false)
+            .create()
+        dialog.show()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val file = com.primebox.data.Updater.download(context, info) { pct ->
+                activity?.runOnUiThread { dialog.setMessage("Downloading… $pct%") }
+            }
+            dialog.dismiss()
+            if (file == null) {
+                android.widget.Toast.makeText(context, "Update download failed", android.widget.Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            com.primebox.data.Updater.install(context, file)
+        }
     }
 
     private fun openSwitcher() {
