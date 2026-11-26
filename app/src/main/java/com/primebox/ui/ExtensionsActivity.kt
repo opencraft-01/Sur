@@ -59,6 +59,12 @@ class ExtensionsActivity : AppCompatActivity() {
         actionRow.addView(Ui.horizontalSpace(context, 8))
         actionRow.addView(Ui.tonalButton(context, "Reload") { reloadPlugins() })
         column.addView(actionRow)
+        column.addView(Ui.spacer(context, 8))
+        column.addView(Ui.tonalButton(context, "Scan Download folder for .cs3") {
+            val (count, message) = ExtensionManager.scanDownloads(context)
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            if (count > 0) refreshAll()
+        })
 
         if (android.os.Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
             column.addView(Ui.spacer(context, 10))
@@ -248,12 +254,15 @@ class ExtensionsActivity : AppCompatActivity() {
         pluginBox.removeAllViews()
         pluginBox.addView(Ui.label(context, "loading repository…"))
         lifecycleScope.launch {
-            val plugins = withContext(Dispatchers.IO) {
-                runCatching { ExtensionManager.fetchRepo(repoUrl) }.getOrNull()
+            val result = withContext(Dispatchers.IO) {
+                runCatching { ExtensionManager.fetchRepo(repoUrl) }
             }
             pluginBox.removeAllViews()
+            val plugins = result.getOrNull()
             if (plugins == null) {
-                pluginBox.addView(Ui.body(context, "Could not load repository"))
+                val reason = result.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "unknown error"
+                pluginBox.addView(Ui.textView(context, "Failed — $reason", 11.5f, Ui.danger(context)))
+                pluginBox.addView(Ui.textView(context, "Tap the refresh icon on the repository to retry.", 11f, Ui.textDim(context)))
                 return@launch
             }
             if (plugins.isEmpty()) {

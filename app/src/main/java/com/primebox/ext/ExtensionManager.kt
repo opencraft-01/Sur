@@ -19,12 +19,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
 
 /**
  * PrimeBox extension engine.
  *
  * Compatible with CloudStream 3 `.cs3` extension files and CloudStream extension
- * repository JSON indexes.
+ * repositories (both the `plugins` array form and the `pluginLists` form that real
+ * CloudStream repositories use).
  */
 object ExtensionManager {
 
@@ -34,7 +36,13 @@ object ExtensionManager {
     private const val USER_AGENT =
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
-    private val client = OkHttpClient.Builder().build()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
+        .build()
 
     data class Loaded(
         val name: String,
@@ -59,6 +67,10 @@ object ExtensionManager {
 
     private val loadedMap = LinkedHashMap<String, Loaded>()
 
+    /** Last human readable failure, shown in the UI. */
+    var lastError: String? = null
+        private set
+
     fun loaded(): List<Loaded> = loadedMap.values.toList()
 
     fun providers(): List<MainAPI> = APIHolder.allProviders.toList()
@@ -66,7 +78,7 @@ object ExtensionManager {
     fun extensionDir(context: Context): File =
         File(context.filesDir, EXT_DIR).apply { mkdirs() }
 
-    /** The folder CS3 uses for drop-in local extensions. */
+    /** Folder CS3 uses for drop-in local extensions. */
     fun localDir(): File {
         val dir = File(Environment.getExternalStorageDirectory(), "Cloudstream3/plugins")
         if (!dir.exists()) dir.mkdirs()
@@ -76,20 +88,23 @@ object ExtensionManager {
     // ------------------------------------------------------------------ loading
 
     fun loadAll(context: Context) {
-        localDir().listFiles()?.forEach { file ->
-            if (file.isFile && file.length() > 0) loadFile(context, file, isLocal = true)
+        runCatching {
+            localDir().listFiles()?.forEach { file ->
+                if (file.isFile && file.length() > 0) loadFile(context, file, isLocal = true)
+            }
         }
         extensionDir(context).listFiles()?.forEach { file ->
-            if (file.isFile && file.name.endsWith(".cs3")) loadFile(context, file, isLocal = false)
+            if (file.isFile) loadFile(context, file, isLocal = false)
         }
     }
 
     /**
      * Android 14+ refuses to load dex from a writable location, so every plugin is
-     * copied into app-specific external storage and marked read-only before loading.
+     * copied into app-specific external storage and marked read-only first.
      */
     private fun dexCopy(context: Context, file: File): File {
-        val dir = File(context.getExternalFilesDir(null), "plugins").apply { mkdirs() }
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        val dir = File(base, "plugins").apply { mkdirs() }
         val dest = File(dir, file.name)
         if (!dest.exists() || dest.length() != file.length()) {
             file.copyTo(dest, overwrite = true)
@@ -108,7 +123,8 @@ object ExtensionManager {
             val manifestText = loader.getResourceAsStream("manifest.json")
                 ?.bufferedReader()?.use { it.readText() }
             if (manifestText.isNullOrBlank()) {
-                Log.w(TAG, "no manifest.json in ${file.name}")
+                lastError = "${file.name}: no manifest.json inside the extension"
+                Log.w(TAG, lastError!!)
                 return false
             }
             val json = JSONObject(manifestText)
@@ -116,7 +132,8 @@ object ExtensionManager {
             val version = json.optInt("version", Int.MIN_VALUE)
             val name = json.optString("name").ifBlank { file.nameWithoutExtension }
             if (className.isBlank()) {
-                Log.w(TAG, "no pluginClassName in ${file.name}")
+                lastError = "${file.name}: manifest.json has no pluginClassName"
+                Log.w(TAG, lastError!!)
                 return false
             }
 
@@ -140,11 +157,14 @@ object ExtensionManager {
 
             if (instance is Plugin) instance.load(context) else instance.load()
 
-            val mine = APIHolder.allProviders.toList().filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == path }
+            val mine = APIHolder.allProviders.toList()
+                .filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == path }
             loadedMap[path] = Loaded(name, version, path, mine, isLocal)
+            lastError = null
             Log.i(TAG, "loaded $name (v$version) with ${mine.size} providers")
             true
         } catch (t: Throwable) {
+            lastError = "${file.name}: ${t.javaClass.simpleName}: ${t.message}"
             Log.e(TAG, "failed loading ${file.name}", t)
             false
         }
@@ -172,14 +192,20 @@ object ExtensionManager {
         return try {
             val name = queryName(context, uri) ?: "extension.cs3"
             val target = File(extensionDir(context), sanitize(name))
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
-            } ?: return false to "Could not read file"
+            val input = context.contentResolver.openInputStream(uri)
+                ?: return false to "Could not open the picked file"
+            input.use { source ->
+                target.outputStream().use { output -> source.copyTo(output) }
+            }
+            if (target.length() == 0L) {
+                target.delete()
+                return false to "Picked file was empty"
+            }
             val ok = loadFile(context, target)
-            ok to if (ok) "Installed ${target.name}" else "File loaded but not a valid .cs3"
+            if (ok) true to "Installed ${target.name}" else false to (lastError ?: "Not a valid .cs3 file")
         } catch (t: Throwable) {
             Log.e(TAG, "import failed", t)
-            false to (t.message ?: "Import failed")
+            false to "${t.javaClass.simpleName}: ${t.message}"
         }
     }
 
@@ -201,34 +227,139 @@ object ExtensionManager {
         return if (cleaned.endsWith(".cs3")) cleaned else "$cleaned.cs3"
     }
 
+    /**
+     * Fallback importer: scans the public Download folder for `.cs3` files.
+     * Works even when the system file picker hides unknown extensions.
+     */
+    fun scanDownloads(context: Context): Pair<Int, String> {
+        val dirs = listOf(
+            File(Environment.getExternalStorageDirectory(), "Download"),
+            File(Environment.getExternalStorageDirectory(), "Downloads"),
+            localDir()
+        )
+        var count = 0
+        val errors = ArrayList<String>()
+        dirs.filter { it.exists() && it.isDirectory }.forEach { dir ->
+            dir.listFiles()?.forEach { file ->
+                if (file.isFile && file.name.lowercase().endsWith(".cs3")) {
+                    val target = File(extensionDir(context), sanitize(file.name))
+                    runCatching { file.copyTo(target, overwrite = true) }
+                    if (loadFile(context, target)) count++ else errors.add(lastError ?: file.name)
+                }
+            }
+        }
+        return when {
+            count > 0 -> count to "Installed $count extension(s)"
+            errors.isNotEmpty() -> 0 to errors.first()
+            else -> 0 to "No .cs3 file found in Download or /Cloudstream3/plugins"
+        }
+    }
+
     // ------------------------------------------------------------------- repos
 
-    suspend fun fetchRepo(repoUrl: String): List<RepoPlugin> = withContext(Dispatchers.IO) {
-        val request = Request.Builder().url(repoUrl).header("User-Agent", USER_AGENT).build()
-        val text = client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
-            response.body?.string().orEmpty()
-        }
-        val root = if (text.trimStart().startsWith("[")) JSONArray(text) else JSONObject(text)
-        val array = when (root) {
-            is JSONArray -> root
-            else -> (root as JSONObject).optJSONArray("plugins") ?: JSONArray()
-        }
-        val out = ArrayList<RepoPlugin>()
-        for (i in 0 until array.length()) {
-            val o = array.optJSONObject(i) ?: continue
-            val url = o.optString("url")
-            if (url.isBlank()) continue
-            val authors = ArrayList<String>()
-            o.optJSONArray("authors")?.let { a ->
-                for (j in 0 until a.length()) authors.add(a.optString(j))
+    private fun httpGet(url: String): String {
+        val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
+        return client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw IllegalStateException("HTTP ${response.code} ${response.message} — ${body.take(120).replace("\n", " ")}")
             }
-            out.add(
-                RepoPlugin(
+            body
+        }
+    }
+
+    private fun parseJson(text: String): Any {
+        val trimmed = text.trimStart()
+        if (trimmed.startsWith("<")) {
+            throw IllegalStateException("Server returned HTML, not JSON (wrong URL?)")
+        }
+        return if (trimmed.startsWith("[")) JSONArray(text) else JSONObject(text)
+    }
+
+    private fun resolve(base: String, relative: String): String {
+        val rel = relative.trim()
+        if (rel.startsWith("http://") || rel.startsWith("https://")) return rel
+        return try {
+            java.net.URI(base).resolve(rel).toString()
+        } catch (t: Throwable) {
+            rel
+        }
+    }
+
+    /**
+     * Resolves a repository URL into plugins.
+     *
+     * Supports the three shapes found in the wild:
+     *  1. a bare JSON array of plugins
+     *  2. `{ "plugins": [...] }`
+     *  3. `{ "pluginLists": ["https://…/plugins.json", …] }`  ← real CloudStream repos
+     */
+    suspend fun fetchRepo(repoUrl: String): List<RepoPlugin> = withContext(Dispatchers.IO) {
+        val root = parseJson(httpGet(repoUrl))
+        val arrays = ArrayList<JSONArray>()
+
+        fun collect(node: Any?) {
+            when (node) {
+                is JSONArray -> {
+                    // A plugin list is an array of objects that have a `url` field.
+                    val firstObject = (0 until node.length())
+                        .mapNotNull { node.optJSONObject(it) }
+                        .firstOrNull()
+                    if (firstObject != null && firstObject.has("url")) {
+                        arrays.add(node)
+                    } else {
+                        // Otherwise treat it as a list of URLs to plugin files.
+                        for (i in 0 until node.length()) {
+                            val value = node.optString(i)
+                            if (value.startsWith("http") || value.endsWith(".json")) {
+                                runCatching {
+                                    collect(parseJson(httpGet(resolve(repoUrl, value))))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                is JSONObject -> {
+                    node.optJSONArray("plugins")?.let { collect(it) }
+                    node.optJSONArray("pluginLists")?.let { lists ->
+                        for (i in 0 until lists.length()) {
+                            val listUrl = lists.optString(i)
+                            if (listUrl.isNotBlank()) {
+                                runCatching {
+                                    collect(parseJson(httpGet(resolve(repoUrl, listUrl))))
+                                }
+                            }
+                        }
+                    }
+                    // some repos wrap the list in "data" or "extensions"
+                    node.optJSONArray("data")?.let { collect(it) }
+                    node.optJSONArray("extensions")?.let { collect(it) }
+                }
+            }
+        }
+
+        collect(root)
+        if (arrays.isEmpty()) {
+            throw IllegalStateException("No plugin list found — check that this is a CloudStream repository URL")
+        }
+
+        val out = LinkedHashMap<String, RepoPlugin>()
+        arrays.forEach { array ->
+            for (i in 0 until array.length()) {
+                val o = array.optJSONObject(i) ?: continue
+                val url = o.optString("url")
+                if (url.isBlank()) continue
+                val authors = ArrayList<String>()
+                o.optJSONArray("authors")?.let { a ->
+                    for (j in 0 until a.length()) authors.add(a.optString(j))
+                }
+                val internal = o.optString("internalName").ifBlank { o.optString("name") }
+                val plugin = RepoPlugin(
                     repoUrl = repoUrl,
-                    name = o.optString("name").ifBlank { o.optString("internalName") },
-                    internalName = o.optString("internalName").ifBlank { o.optString("name") },
-                    url = url,
+                    name = o.optString("name").ifBlank { internal },
+                    internalName = internal,
+                    url = resolve(repoUrl, url),
                     version = o.optInt("version", 0),
                     fileHash = if (o.has("fileHash")) o.optString("fileHash") else null,
                     description = if (o.has("description")) o.optString("description") else null,
@@ -236,9 +367,13 @@ object ExtensionManager {
                     iconUrl = if (o.has("iconUrl")) o.optString("iconUrl") else null,
                     language = if (o.has("language")) o.optString("language") else null
                 )
-            )
+                out[internal.ifBlank { url }] = plugin
+            }
         }
-        out
+        if (out.isEmpty()) {
+            throw IllegalStateException("Repository listed no installable extensions")
+        }
+        out.values.toList()
     }
 
     suspend fun install(context: Context, plugin: RepoPlugin): Pair<Boolean, String> = withContext(Dispatchers.IO) {
@@ -247,7 +382,9 @@ object ExtensionManager {
             val tmp = File(context.cacheDir, "dl_${System.currentTimeMillis()}.cs3")
             val request = Request.Builder().url(plugin.url).header("User-Agent", USER_AGENT).build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext false to "Download failed: HTTP ${response.code}"
+                if (!response.isSuccessful) {
+                    return@withContext false to "Download failed: HTTP ${response.code}"
+                }
                 val body = response.body ?: return@withContext false to "Download failed: empty body"
                 body.byteStream().use { input ->
                     tmp.outputStream().use { output -> input.copyTo(output) }
@@ -263,10 +400,10 @@ object ExtensionManager {
             tmp.copyTo(target, overwrite = true)
             tmp.delete()
             val ok = loadFile(context, target)
-            ok to if (ok) "Installed ${plugin.name}" else "Downloaded, but extension failed to load"
+            ok to if (ok) "Installed ${plugin.name}" else (lastError ?: "Downloaded, but extension failed to load")
         } catch (t: Throwable) {
             Log.e(TAG, "install failed", t)
-            false to (t.message ?: "Install failed")
+            false to "${t.javaClass.simpleName}: ${t.message}"
         }
     }
 

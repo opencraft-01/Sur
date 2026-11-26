@@ -10,8 +10,8 @@ android {
         applicationId = "com.primebox.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1.0"
+        versionCode = 3
+        versionName = "1.2.0"
         resourceConfigurations += listOf("en")
 
         ndk {
@@ -36,8 +36,10 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // R8 off on purpose: extensions are loaded at runtime and link against
+            // the library by exact name, so obfuscation breaks them silently.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
