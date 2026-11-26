@@ -1,6 +1,5 @@
 package com.primebox.sample
 
-import android.content.Context
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
@@ -13,7 +12,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
-import com.lagradost.cloudstream3.plugins.Plugin
+import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.newExtractorLink
 
@@ -21,8 +20,8 @@ import com.lagradost.cloudstream3.utils.newExtractorLink
  * Reference extension used to verify that PrimeBox can load CS3 extensions.
  * It needs no network: every screen is generated locally.
  */
-class PrimeBoxTestPlugin : Plugin() {
-    override fun load(context: Context) {
+class PrimeBoxTestPlugin : BasePlugin() {
+    override fun load() {
         registerMainAPI(PrimeBoxTestProvider())
     }
 }
