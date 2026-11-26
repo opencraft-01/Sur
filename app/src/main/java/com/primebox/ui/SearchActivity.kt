@@ -17,8 +17,11 @@ import com.primebox.ext.Providers
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 class SearchActivity : AppCompatActivity() {
+
+    private val apiName: String get() = Providers.active()?.name ?: ""
 
     private lateinit var results: RecyclerView
     private lateinit var status: android.widget.TextView
@@ -84,8 +87,8 @@ class SearchActivity : AppCompatActivity() {
                     Intent(context, DetailActivity::class.java)
                         .putExtra("url", item.url)
                         .putExtra("name", item.name)
-                        .putExtra("poster", item.posterUrl)
-                        .putExtra("api", item.apiName)
+                        .putExtra("poster", item.poster)
+                        .putExtra("api", item.api ?: apiName)
                 )
             }
             setPadding(0, Ui.dp(context, 8), 0, Ui.dp(context, 24))
@@ -141,10 +144,10 @@ class SearchActivity : AppCompatActivity() {
         status.text = "SEARCHING…"
         lifecycleScope.launch {
             val found = withContext(Dispatchers.IO) {
-                runCatching { api.search(query) }.getOrNull().orEmpty()
+                runCatching { withTimeout(25_000) { api.search(query) } }.getOrNull().orEmpty()
             }
             status.text = if (found.isEmpty()) "NO RESULTS" else "${found.size} RESULTS"
-            (results.adapter as? PosterAdapter)?.submit(found)
+            (results.adapter as? PosterAdapter)?.submit(found.map { com.primebox.data.Card.from(it) })
         }
     }
 }

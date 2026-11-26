@@ -9,6 +9,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.widget.NestedScrollView
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.primebox.BuildConfig
 import com.primebox.data.Store
 
@@ -73,6 +75,42 @@ class SettingsActivity : AppCompatActivity() {
         column.addView(Ui.spacer(context, 24))
         column.addView(Ui.sectionHeader(context, "Playback").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
         column.addView(rowCard(context, "Autoplay next episode", Store.autoplayNext) { Store.autoplayNext = it })
+
+        column.addView(Ui.spacer(context, 24))
+        column.addView(Ui.sectionHeader(context, "Updates").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
+        column.addView(Ui.body(context, "Installed: ${com.primebox.data.Updater.currentName()} (build ${com.primebox.data.Updater.currentCode()})"))
+
+        val updateStatus = Ui.label(context, "")
+        val updateButton = Ui.filledButton(context, "Check for updates") {
+            lifecycleScope.launch {
+                updateStatus.text = "CHECKING…"
+                val info = com.primebox.data.Updater.check()
+                if (info == null) {
+                    updateStatus.text = "NO RELEASE FOUND"
+                    return@launch
+                }
+                if (info.versionCode <= com.primebox.data.Updater.currentCode()) {
+                    updateStatus.text = "UP TO DATE"
+                    return@launch
+                }
+                updateStatus.text = "DOWNLOADING ${info.versionName}… 0%"
+                val file = com.primebox.data.Updater.download(context, info) { pct ->
+                    runOnUiThread { updateStatus.text = "DOWNLOADING ${info.versionName}… $pct%" }
+                }
+                if (file == null) {
+                    updateStatus.text = "DOWNLOAD FAILED"
+                    return@launch
+                }
+                updateStatus.text = "OPENING INSTALLER…"
+                com.primebox.data.Updater.install(context, file)
+            }
+        }
+        column.addView(updateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Ui.dp(context, 10)
+        })
+        column.addView(updateStatus, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = Ui.dp(context, 8)
+        })
 
         column.addView(Ui.spacer(context, 24))
         column.addView(Ui.sectionHeader(context, "Data").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })

@@ -63,7 +63,7 @@ class MainActivity : AppCompatActivity() {
             imageTintList = android.content.res.ColorStateList.valueOf(Ui.onAccent(this@MainActivity))
             compatElevation = Ui.dp(this@MainActivity, 6).toFloat()
             contentDescription = "Switch extension"
-            setOnClickListener { showExtensionSwitcher() }
+            setOnClickListener { openSwitcher() }
         }
         root.addView(
             fab,
@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
             .commit()
     }
 
-    private fun showExtensionSwitcher() {
+    fun openSwitcher() {
         val sheet = BottomSheetDialog(this)
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

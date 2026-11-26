@@ -28,6 +28,7 @@ class PrimeApp : Application() {
         )
 
         Downloader.init(this)
+        com.primebox.img.ImageLoader.init(this)
 
         Thread {
             runCatching { ExtensionManager.loadAll(this) }

@@ -12,6 +12,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
@@ -23,9 +24,17 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 
+/**
+ * YouTube-style player: opens inline at the top of the screen (16:9, not fullscreen),
+ * with a fullscreen button that rotates into immersive landscape playback.
+ */
 class PlayerActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
+    private lateinit var videoBox: FrameLayout
+    private lateinit var details: LinearLayout
+    private lateinit var fullscreenButton: TextView
+    private var fullscreen = false
     private var title: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,19 +44,69 @@ class PlayerActivity : AppCompatActivity() {
             finish()
             return
         }
-        val isLocal = intent.getBooleanExtra("local", false)
         val referer = intent.getStringExtra("referer")
         @Suppress("UNCHECKED_CAST")
         val headers = (intent.getSerializableExtra("headers") as? HashMap<String, String>) ?: HashMap()
         title = intent.getStringExtra("title") ?: ""
 
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
+        val context = this
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Ui.bg(context))
+        }
+
+        // ------------------------------------------------------------- video
+        videoBox = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        val playerView = PlayerView(this).apply {
+            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+            setBackgroundColor(Color.BLACK)
+            setControllerShowTimeoutMs(3000)
+        }
+        videoBox.addView(playerView, FrameLayout.LayoutParams(-1, -1))
+        val videoHeight = (resources.displayMetrics.widthPixels * 9f / 16f).toInt()
+        root.addView(videoBox, LinearLayout.LayoutParams(-1, videoHeight))
+
+        // ----------------------------------------------------------- details
+        details = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(Ui.dp(context, 18), Ui.dp(context, 16), Ui.dp(context, 18), Ui.dp(context, 24))
+        }
+        details.addView(Ui.display(context, title, 17f), LinearLayout.LayoutParams(-1, -2))
+        val source = intent.getStringExtra("source") ?: ""
+        if (source.isNotBlank()) {
+            details.addView(Ui.body(context, source), LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = Ui.dp(context, 4)
+            })
+        }
+
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        fullscreenButton = Ui.tonalButton(context, "⛶  Fullscreen") { toggleFullscreen() }
+        actions.addView(fullscreenButton)
+        actions.addView(Ui.horizontalSpace(context, 10))
+        actions.addView(Ui.tonalButton(context, "⤢  Picture in picture") {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) enterPip()
+        })
+        details.addView(actions, LinearLayout.LayoutParams(-2, -2).apply { topMargin = Ui.dp(context, 16) })
+
+        details.addView(
+            Ui.body(context, "Playback continues in the background while you browse. Use fullscreen for a cinema view."),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(context, 16) }
+        )
+        root.addView(details, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        setContentView(root)
+        Ui.applyTopInset(details, 0)
+
+        // ------------------------------------------------------------ player
         val requestHeaders = HashMap<String, String>(headers)
         if (!referer.isNullOrBlank()) requestHeaders["Referer"] = referer
-
         val dataSourceFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(USER_AGENT)
             .setDefaultRequestProperties(requestHeaders)
@@ -57,35 +116,31 @@ class PlayerActivity : AppCompatActivity() {
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .build()
         player = exoPlayer
-
-        val root = FrameLayout(this)
-        root.setBackgroundColor(Color.BLACK)
-
-        val playerView = PlayerView(this).apply {
-            player = exoPlayer
-            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-            setBackgroundColor(Color.BLACK)
-            setControllerShowTimeoutMs(3000)
-        }
-        root.addView(playerView, FrameLayout.LayoutParams(-1, -1))
-
-        val overlay = TextView(this).apply {
-            text = "←   $title"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-            setShadowLayer(6f, 0f, 2f, Color.BLACK)
-            setPadding(Ui.dp(this@PlayerActivity, 18), Ui.dp(this@PlayerActivity, 16), Ui.dp(this@PlayerActivity, 18), Ui.dp(this@PlayerActivity, 12))
-            setOnClickListener { finish() }
-        }
-        root.addView(overlay, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
-
-        setContentView(root)
-        hideSystemBars()
-
+        playerView.player = exoPlayer
         exoPlayer.setMediaItem(MediaItem.fromUri(url))
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
+    }
+
+    private fun toggleFullscreen() {
+        fullscreen = !fullscreen
+        val context = this
+        if (fullscreen) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            details.visibility = View.GONE
+            videoBox.layoutParams = LinearLayout.LayoutParams(-1, -1)
+            hideSystemBars()
+            fullscreenButton.text = "⛶  Exit fullscreen"
+        } else {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            details.visibility = View.VISIBLE
+            videoBox.layoutParams = LinearLayout.LayoutParams(
+                -1, (resources.displayMetrics.widthPixels * 9f / 16f).toInt()
+            )
+            showSystemBars()
+            fullscreenButton.text = "⛶  Fullscreen"
+        }
+        videoBox.requestLayout()
     }
 
     private fun hideSystemBars() {
@@ -95,22 +150,29 @@ class PlayerActivity : AppCompatActivity() {
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
+    private fun showSystemBars() {
+        val controller = WindowInsetsControllerCompat(window, window.decorView)
+        controller.show(WindowInsetsCompat.Type.systemBars())
+    }
+
+    private fun enterPip() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val p = player ?: return
+        val width = p.videoSize.width
+        val height = p.videoSize.height
+        val ratio = if (width > 0 && height > 0) Rational(width, height) else Rational(16, 9)
+        runCatching { enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(ratio).build()) }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val player = player ?: return
-            if (!player.isPlaying) return
-            val width = player.videoSize.width
-            val height = player.videoSize.height
-            val ratio = if (width > 0 && height > 0) Rational(width, height) else Rational(16, 9)
-            val params = PictureInPictureParams.Builder().setAspectRatio(ratio).build()
-            runCatching { enterPictureInPictureMode(params) }
-        }
+        val p = player
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && p != null && p.isPlaying) enterPip()
     }
 
     override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (!isInPictureInPictureMode) hideSystemBars()
+        if (!isInPictureInPictureMode && fullscreen) hideSystemBars()
     }
 
     override fun onStop() {

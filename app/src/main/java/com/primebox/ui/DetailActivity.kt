@@ -32,6 +32,7 @@ import com.primebox.img.ImageLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 class DetailActivity : AppCompatActivity() {
 
@@ -146,7 +147,7 @@ class DetailActivity : AppCompatActivity() {
             return
         }
         lifecycleScope.launch {
-            val response = withContext(Dispatchers.IO) { runCatching { api.load(urlArg) }.getOrNull() }
+            val response = withContext(Dispatchers.IO) { runCatching { withTimeout(30_000) { api.load(urlArg) } }.getOrNull() }
             if (response == null) {
                 status.text = "COULD NOT LOAD THIS TITLE"
                 return@launch
@@ -228,12 +229,14 @@ class DetailActivity : AppCompatActivity() {
             val links = withContext(Dispatchers.IO) {
                 val collected = ArrayList<ExtractorLink>()
                 runCatching {
-                    api.loadLinks(
-                        data = data,
-                        isCasting = false,
-                        subtitleCallback = { _: SubtitleFile -> },
-                        callback = { link -> collected.add(link) }
-                    )
+                    withTimeout(45_000) {
+                        api.loadLinks(
+                            data = data,
+                            isCasting = false,
+                            subtitleCallback = { _: SubtitleFile -> },
+                            callback = { link -> collected.add(link) }
+                        )
+                    }
                 }
                 collected.sortedByDescending { it.quality }
             }
@@ -279,6 +282,7 @@ class DetailActivity : AppCompatActivity() {
                 .putExtra("referer", link.referer)
                 .putExtra("title", title)
                 .putExtra("headers", HashMap(link.headers))
+                .putExtra("source", "${link.name}  •  ${link.quality}p")
         )
     }
 
