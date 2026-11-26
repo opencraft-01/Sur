@@ -15,6 +15,10 @@ class PrimeApp : Application() {
         CloudStreamApp.init(this)
         CloudStreamApp.appContext = this
 
+        // The CS3 library needs a host Context for its WebView based resolvers
+        // (Cloudflare / DDoS-Guard). Without it many providers return no links.
+        runCatching { com.lagradost.api.setContext(this) }
+
         AppCompatDelegate.setDefaultNightMode(
             when (Store.themeMode) {
                 1 -> AppCompatDelegate.MODE_NIGHT_NO

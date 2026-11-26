@@ -77,6 +77,13 @@ class MainActivity : AppCompatActivity() {
         selectTab(0, animate = false)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Give the extension library an Activity context so WebView based
+        // link resolvers (Cloudflare, DDoS-Guard) work.
+        runCatching { com.lagradost.api.setContext(this) }
+    }
+
     private fun selectTab(index: Int, animate: Boolean = true) {
         if (index == currentTab && animate) return
         currentTab = index
