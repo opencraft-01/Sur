@@ -540,7 +540,7 @@ object ExtensionManager {
             tmp.copyTo(target, overwrite = true)
             tmp.delete()
             val ok = loadFile(context, target)
-            ok to if (ok) "Installed ${plugin.name}" else (this.lastError ?: "Downloaded, but extension failed to load")
+            ok to if (ok) "Installed ${plugin.name}" else (lastError ?: "Downloaded, but extension failed to load")
         } catch (t: Throwable) {
             Log.e(TAG, "install failed", t)
             false to "${t.javaClass.simpleName}: ${t.message}"
