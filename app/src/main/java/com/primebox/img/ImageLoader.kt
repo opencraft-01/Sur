@@ -39,14 +39,43 @@ object ImageLoader {
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private val gate = Semaphore(6)
+    private val gate = Semaphore(4)
     private val main = Handler(Looper.getMainLooper())
     private var diskDir: File? = null
 
+    /** URLs already being downloaded — avoids two requests for the same poster. */
+    private val inFlight = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    private const val DISK_LIMIT_BYTES = 40L * 1024 * 1024
+    private var appContext: Context? = null
+
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (diskDir == null) {
             diskDir = File(context.cacheDir, "img").apply { mkdirs() }
+            scope.launch { trimDisk() }
         }
+    }
+
+    /** Keeps the image cache under ~40 MB (LRU by last modified). */
+    private fun trimDisk() {
+        val dir = diskDir ?: return
+        runCatching {
+            val files = dir.listFiles()?.sortedBy { it.lastModified() } ?: return
+            var total = files.sumOf { it.length() }
+            for (file in files) {
+                if (total <= DISK_LIMIT_BYTES) break
+                total -= file.length()
+                file.delete()
+            }
+        }
+    }
+
+    fun cacheSizeBytes(): Long = diskDir?.listFiles()?.sumOf { it.length() } ?: 0L
+
+    fun clearCache() {
+        runCatching { diskDir?.listFiles()?.forEach { it.delete() } }
+        memory.evictAll()
     }
 
     fun load(
@@ -81,6 +110,7 @@ object ImageLoader {
         view.setImageDrawable(null)
         placeholder?.visibility = View.VISIBLE
 
+        if (!inFlight.add(fixed)) return
         scope.launch {
             gate.withPermit {
                 val bitmap = runCatching { fetch(fixed, headers, targetPx) }.getOrNull()
@@ -88,6 +118,7 @@ object ImageLoader {
                     memory.put(fixed, bitmap)
                     writeDisk(fixed, bitmap)
                 }
+                inFlight.remove(fixed)
                 main.post {
                     if (view.tag == fixed) {
                         if (bitmap != null) {
@@ -102,8 +133,10 @@ object ImageLoader {
         }
     }
 
-    /** Warm the cache without a view. */
-    fun prefetch(url: String?, headers: Map<String, String>? = null, targetPx: Int = 400) {
+    /** Warm the cache without a view (skipped on metered / data saver). */
+    fun prefetch(url: String?, headers: Map<String, String>? = null, targetPx: Int = 320) {
+        val context = appContext
+        if (context != null && com.primebox.data.Net.shouldSaveData(context)) return
         val fixed = normalize(url) ?: return
         if (memory.get(fixed) != null || readDisk(fixed) != null) return
         scope.launch {

@@ -106,6 +106,20 @@ class SettingsActivity : AppCompatActivity() {
 
         column.addView(Ui.spacer(context, 24))
         column.addView(Ui.sectionHeader(context, "Data").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
+        column.addView(rowCard(context, "Data saver (skip prefetch on mobile data)", com.primebox.data.Store.dataSaver) {
+            com.primebox.data.Store.dataSaver = it
+        })
+        column.addView(Ui.spacer(context, 10))
+        column.addView(Ui.tonalButton(context, "Clear image cache") {
+            com.primebox.img.ImageLoader.clearCache()
+            Toast.makeText(context, "Image cache cleared", Toast.LENGTH_SHORT).show()
+        })
+        column.addView(Ui.spacer(context, 10))
+        column.addView(Ui.tonalButton(context, "Clear cached home") {
+            com.primebox.data.HomeCache.clear(context)
+            Toast.makeText(context, "Home cache cleared", Toast.LENGTH_SHORT).show()
+        })
+        column.addView(Ui.spacer(context, 10))
         column.addView(Ui.tonalButton(context, "Clear watch history") {
             Store.clearHistory()
             Toast.makeText(context, "History cleared", Toast.LENGTH_SHORT).show()

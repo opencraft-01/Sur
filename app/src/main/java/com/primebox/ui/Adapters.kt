@@ -182,7 +182,7 @@ class HeroAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = items[position]
-        ImageLoader.load(item.poster, holder.image, null, 1000)
+        ImageLoader.load(item.poster, holder.image, null, 600)
         holder.title.text = item.name
         val bits = mutableListOf<String>()
         item.type?.let { bits.add(it) }

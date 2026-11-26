@@ -23,6 +23,7 @@ import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
 import com.primebox.data.Card
 import com.primebox.data.HomeCache
+import com.primebox.data.Net
 import com.primebox.data.Store
 import com.primebox.ext.Languages
 import com.primebox.ext.Providers
@@ -47,6 +48,12 @@ class HomeFragment : Fragment() {
     private val handler = Handler(Looper.getMainLooper())
     private var autoScroll: Runnable? = null
     private var currentProvider: String? = null
+    private var loadJob: kotlinx.coroutines.Job? = null
+    private var rowsAdded = 0
+
+    private companion object {
+        const val CACHE_TTL_MS = 30L * 60L * 1000L
+    }
 
     override fun onCreateView(
         inflater: android.view.LayoutInflater,
@@ -152,7 +159,7 @@ class HomeFragment : Fragment() {
         heroWrap = FrameLayout(context).apply { visibility = View.GONE }
         carousel = ViewPager2(context).apply {
             adapter = HeroAdapter(emptyList(), { }, { })
-            offscreenPageLimit = 2
+            offscreenPageLimit = 1
             clipToPadding = false
             clipChildren = false
             setPadding(Ui.dp(context, 8), 0, Ui.dp(context, 8), 0)
@@ -185,8 +192,9 @@ class HomeFragment : Fragment() {
     /** Silent update check (max once every 6 hours) that opens the update popup. */
     private fun maybeCheckUpdate() {
         val context = context ?: return
+        if (Net.shouldSaveData(context)) return
         val now = System.currentTimeMillis()
-        if (now - Store.lastUpdateCheck < 6L * 60L * 60L * 1000L) return
+        if (now - Store.lastUpdateCheck < 24L * 60L * 60L * 1000L) return
         Store.lastUpdateCheck = now
         viewLifecycleOwner.lifecycleScope.launch {
             val info = com.primebox.data.Updater.check() ?: return@launch
@@ -261,49 +269,84 @@ class HomeFragment : Fragment() {
         providerLabel.text = Languages.name(api.lang).uppercase()
         currentProvider = providerName
 
-        // 1) show cached content instantly
+        // 1) cached content first — instant, no network
         val cached = HomeCache.load(context, providerName)
         if (cached != null && cached.rows.isNotEmpty()) {
             renderRows(cached.rows, fromCache = true)
-        } else {
+        } else if (rowsHost.childCount == 0) {
             showSkeleton()
         }
-        if (!force && cached != null && System.currentTimeMillis() - cached.time < 3 * 60 * 1000) {
-            // fresh enough — skip the network call
+
+        val fresh = cached != null && System.currentTimeMillis() - cached.time < CACHE_TTL_MS
+        if (!force && fresh) {
+            // cached data is still fresh: do not spend data
             refresh.isRefreshing = false
             return
         }
 
-        // 2) refresh from the network, row by row
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    val page = api.mainPage.firstOrNull() ?: MainPageData("", "", false)
-                    withTimeout(25_000) {
-                        api.getMainPage(1, MainPageRequest(page.name, page.data, page.horizontalImages))
+        // 2) one request at a time; a new refresh cancels the previous one
+        loadJob?.cancel()
+        loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            try {
+                if (!Net.isOnline(context)) {
+                    if (rowsHost.childCount == 0) showError("You are offline — cached content will show when available") { loadHome(force = true) }
+                    return@launch
+                }
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val page = api.mainPage.firstOrNull() ?: MainPageData("", "", false)
+                        withTimeout(25_000) {
+                            api.getMainPage(1, MainPageRequest(page.name, page.data, page.horizontalImages))
+                        }
                     }
                 }
-            }
-            if (!isAdded) return@launch
-            refresh.isRefreshing = false
+                if (!isAdded) return@launch
 
-            val response = result.getOrNull()
-            if (response == null || response.items.isEmpty()) {
-                if (rowsHost.childCount == 0) showEmptyState()
-                return@launch
-            }
+                val response = result.getOrNull()
+                if (response == null || response.items.isEmpty()) {
+                    val reason = result.exceptionOrNull()?.let {
+                        if (it is kotlinx.coroutines.TimeoutCancellationException) "Timed out" else (it.message ?: "Failed to load")
+                    } ?: "Empty response"
+                    if (rowsHost.childCount == 0) showError(reason) { loadHome(force = true) }
+                    return@launch
+                }
 
-            val rows = response.items.map { list ->
-                HomeCache.Row(list.name, list.list.map { Card.from(it) }, list.isHorizontalImages)
-            }.sortedBy { rowPriority(it.name) }
-            rows.forEach { row ->
-                applyRow(row)
-                kotlinx.coroutines.delay(90)
+                val rows = response.items.map { list ->
+                    HomeCache.Row(list.name, list.list.map { Card.from(it) }, list.isHorizontalImages)
+                }.sortedBy { rowPriority(it.name) }
+
+                rowsAdded = 0
+                rows.forEach { row ->
+                    applyRow(row)
+                    rowsAdded++
+                    kotlinx.coroutines.delay(60)
+                }
+                buildChips(rows.map { it.name })
+                if (rows.isNotEmpty()) setHero(rows.first().items)
+                HomeCache.save(context, providerName, rows)
+            } catch (c: kotlinx.coroutines.CancellationException) {
+                throw c
+            } catch (t: Throwable) {
+                if (rowsHost.childCount == 0) showError(t.message ?: "Load failed") { loadHome(force = true) }
+            } finally {
+                if (isAdded) refresh.isRefreshing = false
             }
-            buildChips(rows.map { it.name })
-            if (rows.isNotEmpty()) setHero(rows.first().items)
-            HomeCache.save(context, providerName, rows)
         }
+    }
+
+    private fun showError(message: String, retry: () -> Unit) {
+        val context = context ?: return
+        rowsHost.removeAllViews()
+        val box = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(Ui.dp(context, 28), Ui.dp(context, 40), Ui.dp(context, 28), Ui.dp(context, 24))
+        }
+        box.addView(Ui.display(context, "Could not load", 20f))
+        box.addView(Ui.body(context, message), LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(context, 8) })
+        box.addView(Ui.spacer(context, 16))
+        box.addView(Ui.filledButton(context, "Retry") { retry() })
+        rowsHost.addView(box)
     }
 
     private fun buildChips(names: List<String>) {
@@ -370,7 +413,10 @@ class HomeFragment : Fragment() {
         rowAdapters[row.name] = adapter
         rowBlocks[row.name] = block
 
-        row.items.take(6).forEach { ImageLoaderPrefetch(it) }
+        val context2 = context
+        if (context2 != null && rowsAdded < 2 && !Net.shouldSaveData(context2)) {
+            row.items.take(3).forEach { ImageLoaderPrefetch(it) }
+        }
     }
 
     /** Trending / language rows float to the top, like CloudStream's ordered home. */
@@ -394,7 +440,7 @@ class HomeFragment : Fragment() {
 
     private fun setHero(cards: List<Card>) {
         val context = context ?: return
-        val items = cards.take(8)
+        val items = cards.take(5)
         if (items.isEmpty()) return
         heroWrap.visibility = View.VISIBLE
         carousel.adapter = HeroAdapter(items, { openDetail(it) }, { openDetail(it) })
