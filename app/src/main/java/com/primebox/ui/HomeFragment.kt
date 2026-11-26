@@ -182,7 +182,7 @@ class HomeFragment : Fragment() {
         return refresh
     }
 
-    /** Silent update check (max once every 6 hours) with a tappable banner. */
+    /** Silent update check (max once every 6 hours) that opens the update popup. */
     private fun maybeCheckUpdate() {
         val context = context ?: return
         val now = System.currentTimeMillis()
@@ -192,39 +192,10 @@ class HomeFragment : Fragment() {
             val info = com.primebox.data.Updater.check() ?: return@launch
             if (info.versionCode <= com.primebox.data.Updater.currentCode()) return@launch
             if (!isAdded) return@launch
-            val banner = Ui.pill(context, "\u2B06  Update ${info.versionName} available", true) {
-                downloadUpdate(info)
-            }
-            (rowsHost.parent as? android.view.ViewGroup)?.let { parent ->
-                // place the banner right under the provider row
-                val column = parent as LinearLayout
-                if (column.childCount > 0) {
-                    column.addView(banner, 3.coerceAtMost(column.childCount), LinearLayout.LayoutParams(-2, -2).apply {
-                        setMargins(Ui.dp(context, 20), Ui.dp(context, 6), Ui.dp(context, 20), 0)
-                    })
-                }
-            }
-        }
-    }
-
-    private fun downloadUpdate(info: com.primebox.data.Updater.Info) {
-        val context = context ?: return
-        val dialog = android.app.AlertDialog.Builder(context)
-            .setTitle("Updating to ${info.versionName}")
-            .setMessage("Downloading… 0%")
-            .setCancelable(false)
-            .create()
-        dialog.show()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val file = com.primebox.data.Updater.download(context, info) { pct ->
-                activity?.runOnUiThread { dialog.setMessage("Downloading… $pct%") }
-            }
-            dialog.dismiss()
-            if (file == null) {
-                android.widget.Toast.makeText(context, "Update download failed", android.widget.Toast.LENGTH_LONG).show()
-                return@launch
-            }
-            com.primebox.data.Updater.install(context, file)
+            if (Store.lastPromptedUpdate >= info.versionCode) return@launch
+            Store.lastPromptedUpdate = info.versionCode
+            val activity = activity as? androidx.appcompat.app.AppCompatActivity ?: return@launch
+            UpdateSheet(activity, info).show()
         }
     }
 

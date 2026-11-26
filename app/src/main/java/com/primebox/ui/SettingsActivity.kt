@@ -93,16 +93,8 @@ class SettingsActivity : AppCompatActivity() {
                     updateStatus.text = "UP TO DATE"
                     return@launch
                 }
-                updateStatus.text = "DOWNLOADING ${info.versionName}… 0%"
-                val file = com.primebox.data.Updater.download(context, info) { pct ->
-                    runOnUiThread { updateStatus.text = "DOWNLOADING ${info.versionName}… $pct%" }
-                }
-                if (file == null) {
-                    updateStatus.text = "DOWNLOAD FAILED"
-                    return@launch
-                }
-                updateStatus.text = "OPENING INSTALLER…"
-                com.primebox.data.Updater.install(context, file)
+                updateStatus.text = "UPDATE ${info.versionName} AVAILABLE"
+                UpdateSheet(this@SettingsActivity, info).show()
             }
         }
         column.addView(updateButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {

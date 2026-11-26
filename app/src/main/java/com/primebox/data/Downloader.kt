@@ -38,7 +38,10 @@ object Downloader {
         val provider: String,
         var state: State = State.QUEUED,
         var progress: Int = 0,
-        var filePath: String? = null
+        var filePath: String? = null,
+        var bytes: Long = 0L,
+        var totalBytes: Long = 0L,
+        var speed: Long = 0L
     )
 
     private val client = OkHttpClient.Builder()
@@ -151,21 +154,33 @@ object Downloader {
             if (!response.isSuccessful) error("HTTP ${response.code}")
             val body = response.body ?: error("empty body")
             val total = body.contentLength()
+            item.totalBytes = if (total > 0) total else 0L
             body.byteStream().use { input ->
                 target.outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
+                    val buffer = ByteArray(128 * 1024)
                     var written = 0L
+                    var windowStart = System.currentTimeMillis()
+                    var windowBytes = 0L
                     var lastTick = 0L
                     while (true) {
                         val read = input.read(buffer)
                         if (read <= 0) break
                         output.write(buffer, 0, read)
                         written += read
+                        windowBytes += read
+                        item.bytes = written
+                        val now = System.currentTimeMillis()
+                        val elapsed = now - windowStart
+                        if (elapsed >= 400) {
+                            item.speed = windowBytes * 1000L / elapsed
+                            windowStart = now
+                            windowBytes = 0L
+                        }
                         if (total > 0) {
                             val pct = ((written * 100) / total).toInt().coerceIn(0, 99)
-                            if (pct != item.progress && System.currentTimeMillis() - lastTick > 350) {
+                            if (pct != item.progress && now - lastTick > 350) {
                                 item.progress = pct
-                                lastTick = System.currentTimeMillis()
+                                lastTick = now
                                 notifyChanged()
                             }
                         }
@@ -209,12 +224,32 @@ object Downloader {
             .map { resolve(playlistUrl, it) }
         if (segments.isEmpty()) error("playlist has no segments")
 
+        var written = 0L
+        var windowStart = System.currentTimeMillis()
+        var windowBytes = 0L
         target.outputStream().use { output ->
             segments.forEachIndexed { index, segment ->
                 client.newCall(request(segment, item)).execute().use { response ->
                     if (!response.isSuccessful) error("segment HTTP ${response.code}")
                     val body = response.body ?: return@use
-                    body.byteStream().use { input -> input.copyTo(output) }
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(128 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            written += read
+                            windowBytes += read
+                            item.bytes = written
+                        }
+                    }
+                }
+                val now = System.currentTimeMillis()
+                val elapsed = now - windowStart
+                if (elapsed >= 400) {
+                    item.speed = windowBytes * 1000L / elapsed
+                    windowStart = now
+                    windowBytes = 0L
                 }
                 item.progress = (((index + 1) * 100) / segments.size).coerceIn(0, 99)
                 notifyChanged()

@@ -136,6 +136,11 @@ object Store {
         get() = sp.getLong("last_update_check", 0L)
         set(value) = sp.edit().putLong("last_update_check", value).apply()
 
+    /** Highest version we already offered to the user. */
+    var lastPromptedUpdate: Int
+        get() = sp.getInt("last_prompted_update", 0)
+        set(value) = sp.edit().putInt("last_prompted_update", value).apply()
+
     // ------------------------------------------------------------ bookmarks
 
     var autoplayNext: Boolean

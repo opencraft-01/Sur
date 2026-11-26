@@ -36,6 +36,14 @@ object Updater {
         val notes: String
     )
 
+    /** Live download state: percentage, bytes moved, total size and current speed. */
+    data class Progress(
+        val percent: Int,
+        val downloaded: Long,
+        val total: Long,
+        val bytesPerSecond: Long
+    )
+
     fun currentCode(): Int = BuildConfig.VERSION_CODE
     fun currentName(): String = BuildConfig.VERSION_NAME
 
@@ -73,41 +81,54 @@ object Updater {
         }.onFailure { Log.w(TAG, "update check failed: ${it.message}") }.getOrNull()
     }
 
-    suspend fun download(context: Context, info: Info, onProgress: (Int) -> Unit): File? =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val dir = File(context.cacheDir, "updates").apply { mkdirs() }
-                dir.listFiles()?.forEach { it.delete() }
-                val target = File(dir, "PrimeBox-${info.versionCode}.apk")
-                val request = Request.Builder().url(info.apkUrl).header("User-Agent", "PrimeBox").build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) error("HTTP ${response.code}")
-                    val body = response.body ?: error("empty body")
-                    val total = body.contentLength()
-                    body.byteStream().use { input ->
-                        target.outputStream().use { output ->
-                            val buffer = ByteArray(128 * 1024)
-                            var written = 0L
-                            var last = -1
-                            while (true) {
-                                val read = input.read(buffer)
-                                if (read <= 0) break
-                                output.write(buffer, 0, read)
-                                written += read
-                                if (total > 0) {
-                                    val pct = ((written * 100) / total).toInt()
-                                    if (pct != last) {
-                                        last = pct
-                                        onProgress(pct)
-                                    }
-                                }
+    suspend fun download(
+        context: Context,
+        info: Info,
+        onProgress: (Progress) -> Unit
+    ): File? = withContext(Dispatchers.IO) {
+        runCatching {
+            val dir = File(context.cacheDir, "updates").apply { mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }
+            val target = File(dir, "PrimeBox-${info.versionCode}.apk")
+            val request = Request.Builder().url(info.apkUrl).header("User-Agent", "PrimeBox").build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) error("HTTP ${response.code}")
+                val body = response.body ?: error("empty body")
+                val total = body.contentLength()
+                body.byteStream().use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(128 * 1024)
+                        var written = 0L
+                        var windowStart = System.currentTimeMillis()
+                        var windowBytes = 0L
+                        var speed = 0L
+                        var lastPercent = -1
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read <= 0) break
+                            output.write(buffer, 0, read)
+                            written += read
+                            windowBytes += read
+                            val now = System.currentTimeMillis()
+                            val elapsed = now - windowStart
+                            if (elapsed >= 400) {
+                                speed = windowBytes * 1000L / elapsed
+                                windowStart = now
+                                windowBytes = 0L
+                            }
+                            val percent = if (total > 0) ((written * 100) / total).toInt() else 0
+                            if (percent != lastPercent) {
+                                lastPercent = percent
+                                onProgress(Progress(percent, written, if (total > 0) total else written, speed))
                             }
                         }
+                        onProgress(Progress(100, written, if (total > 0) total else written, speed))
                     }
                 }
-                target
-            }.onFailure { Log.e(TAG, "download failed", it) }.getOrNull()
-        }
+            }
+            target
+        }.onFailure { Log.e(TAG, "download failed", it) }.getOrNull()
+    }
 
     /** Opens the system package installer for the downloaded APK. */
     fun install(context: Context, file: File): Boolean {

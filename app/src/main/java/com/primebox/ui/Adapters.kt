@@ -7,7 +7,6 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.lagradost.cloudstream3.Episode
@@ -94,6 +93,12 @@ class PosterAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
 
 /** Large hero page with shimmer while the artwork loads. */
@@ -186,6 +191,12 @@ class HeroAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
 
 /** Episode row. */
@@ -236,6 +247,12 @@ class EpisodeAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
 
 /** Playable source with download action. */
@@ -293,6 +310,12 @@ class LinkAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
 
 /** Watch-history entry. */
@@ -353,6 +376,12 @@ class HistoryAdapter(
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
 
 /** Downloaded / downloading item. */
@@ -372,7 +401,8 @@ class DownloadAdapter(
         val shimmer: View = skeletonFill(root.context, 12)
         val title: TextView = Ui.textView(root.context, "", 13.5f, Ui.text(root.context), bold = true, maxLines = 1)
         val subtitle: TextView = Ui.textView(root.context, "", 11f, Ui.textDim(root.context), maxLines = 1)
-        val progress: ProgressBar = ProgressBar(root.context, null, android.R.attr.progressBarStyleHorizontal)
+        val progress: WavyProgressView = WavyProgressView(root.context)
+        val stats: TextView = Ui.textView(root.context, "", 10.5f, Ui.textDim(root.context), maxLines = 1)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
@@ -400,9 +430,9 @@ class DownloadAdapter(
         }
         column.addView(holder.title)
         column.addView(holder.subtitle)
-        holder.progress.max = 100
-        holder.progress.progressTintList = android.content.res.ColorStateList.valueOf(Ui.accent(context))
-        column.addView(holder.progress, LinearLayout.LayoutParams(-1, Ui.dp(context, 18)).apply { topMargin = Ui.dp(context, 6) })
+        column.addView(holder.progress, LinearLayout.LayoutParams(-1, Ui.dp(context, 20)).apply { topMargin = Ui.dp(context, 6) })
+        holder.stats.gravity = Gravity.CENTER_HORIZONTAL
+        column.addView(holder.stats, LinearLayout.LayoutParams(-1, -2).apply { topMargin = Ui.dp(context, 2) })
         row.addView(column, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(Ui.iconButton(context, android.R.drawable.ic_menu_delete, Ui.textDim(context)) {
             val p = holder.bindingAdapterPosition
@@ -424,10 +454,28 @@ class DownloadAdapter(
             Downloader.State.FAILED -> "Failed — tap to retry"
             else -> "Queued"
         }
-        holder.progress.visibility = if (item.state == Downloader.State.RUNNING) View.VISIBLE else View.GONE
-        holder.progress.progress = item.progress
+        val running = item.state == Downloader.State.RUNNING
+        holder.progress.visibility = if (running) View.VISIBLE else View.GONE
+        holder.stats.visibility = if (running) View.VISIBLE else View.GONE
+        if (running) {
+            holder.progress.setProgress(item.progress / 100f)
+            holder.stats.text = String.format(
+                java.util.Locale.US,
+                "%d%%   •   %s / %s   •   %s",
+                item.progress,
+                bytes(item.bytes),
+                bytes(item.totalBytes),
+                if (item.speed > 0) bytes(item.speed) + "/s" else "—"
+            )
+        }
         ImageLoader.load(item.poster, holder.image, null, 220, holder.shimmer)
     }
 
     override fun getItemCount(): Int = items.size
+
+    private fun bytes(value: Long): String = when {
+        value <= 0 -> "0 MB"
+        value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)
+        else -> String.format(java.util.Locale.US, "%.1f MB", value / (1024.0 * 1024.0))
+    }
 }
