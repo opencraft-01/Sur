@@ -95,6 +95,30 @@ class ExtensionsActivity : AppCompatActivity() {
         column.addView(Ui.spacer(context, 26))
         column.addView(Ui.sectionHeader(context, "Repositories").apply { setPadding(0, 0, 0, Ui.dp(context, 8)) })
 
+        ExtensionManager.PRESETS.forEach { preset ->
+            val presetRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(Ui.dp(context, 14), Ui.dp(context, 12), Ui.dp(context, 10), Ui.dp(context, 12))
+                background = Ui.shape(context, 16, Ui.accentSoft(context), 1, Ui.accent(context))
+            }
+            val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            info.addView(Ui.textView(context, preset.name, 13f, Ui.text(context), bold = true, maxLines = 1))
+            info.addView(Ui.textView(context, "One tap add", 10.5f, Ui.textDim(context)))
+            presetRow.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            presetRow.addView(Ui.pill(context, "Add", true) {
+                if (!Store.repositories.contains(preset.url)) {
+                    Store.addRepository(preset.url)
+                    renderRepositories()
+                } else {
+                    Toast.makeText(context, "Already added", Toast.LENGTH_SHORT).show()
+                }
+            })
+            column.addView(presetRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = Ui.dp(context, 10)
+            })
+        }
+
         val addRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -221,10 +245,11 @@ class ExtensionsActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
             }
-            head.addView(
-                Ui.textView(context, repoUrl, 12f, Ui.textDim(context), maxLines = 1),
-                LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            )
+            val titleBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            titleBox.addView(Ui.textView(context, repoUrl, 12f, Ui.textDim(context), maxLines = 1))
+            val statusLine = Ui.textView(context, "Tap refresh to load", 11f, Ui.textDim(context))
+            titleBox.addView(statusLine)
+            head.addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             head.addView(Ui.iconButton(context, android.R.drawable.stat_notify_sync, Ui.accent(context)) {
                 loadRepo(repoUrl, block)
             })
@@ -238,6 +263,7 @@ class ExtensionsActivity : AppCompatActivity() {
                 id = View.generateViewId()
             }
             block.addView(pluginBox)
+            block.tag = statusLine
             reposBox.addView(block, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, Ui.dp(context, 10))
             })
@@ -251,34 +277,40 @@ class ExtensionsActivity : AppCompatActivity() {
             .map { block.getChildAt(it) }
             .filterIsInstance<LinearLayout>()
             .lastOrNull() ?: return
+        val statusLine = block.tag as? android.widget.TextView
         pluginBox.removeAllViews()
-        pluginBox.addView(Ui.label(context, "loading repository…"))
+        statusLine?.text = "Loading…"
         lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                runCatching { ExtensionManager.fetchRepo(repoUrl) }
-            }
+            val result = withContext(Dispatchers.IO) { runCatching { ExtensionManager.fetchRepo(repoUrl) } }
             pluginBox.removeAllViews()
-            val plugins = result.getOrNull()
-            if (plugins == null) {
+            val info = result.getOrNull()
+            if (info == null) {
                 val reason = result.exceptionOrNull()?.let { "${it.javaClass.simpleName}: ${it.message}" } ?: "unknown error"
-                pluginBox.addView(Ui.textView(context, "Failed — $reason", 11.5f, Ui.danger(context)))
-                pluginBox.addView(Ui.textView(context, "Tap the refresh icon on the repository to retry.", 11f, Ui.textDim(context)))
+                statusLine?.text = "Failed"
+                statusLine?.setTextColor(Ui.danger(context))
+                pluginBox.addView(Ui.textView(context, reason, 11.5f, Ui.danger(context)))
+                pluginBox.addView(
+                    Ui.textView(context, "Check the link — it must point to a repo.json (raw link).", 11f, Ui.textDim(context)),
+                    LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = Ui.dp(context, 4)
+                    }
+                )
                 return@launch
             }
-            if (plugins.isEmpty()) {
-                pluginBox.addView(Ui.body(context, "Repository has no extensions"))
-                return@launch
-            }
+
+            statusLine?.text = "${info.name}  •  ${info.plugins.size} extensions"
+            statusLine?.setTextColor(Ui.accent(context))
+
             val installedNames = ExtensionManager.loaded().map { it.name }.toSet()
-            plugins.forEach { plugin ->
+            info.plugins.forEach { plugin ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, Ui.dp(context, 10), 0, 0)
                 }
-                val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-                info.addView(Ui.textView(context, plugin.name, 13.5f, Ui.text(context), bold = true, maxLines = 1))
-                info.addView(
+                val pluginInfo = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                pluginInfo.addView(Ui.textView(context, plugin.name, 13.5f, Ui.text(context), bold = true, maxLines = 1))
+                pluginInfo.addView(
                     Ui.textView(
                         context,
                         buildString {
@@ -289,7 +321,7 @@ class ExtensionsActivity : AppCompatActivity() {
                         10.5f, Ui.textDim(context), maxLines = 1
                     )
                 )
-                row.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                row.addView(pluginInfo, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 val already = installedNames.contains(plugin.name)
                 row.addView(Ui.pill(context, if (already) "Reinstall" else "Install", !already) {
                     installPlugin(plugin)
@@ -304,7 +336,12 @@ class ExtensionsActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val (ok, message) = withContext(Dispatchers.IO) { ExtensionManager.install(this@ExtensionsActivity, plugin) }
             Toast.makeText(this@ExtensionsActivity, message, Toast.LENGTH_LONG).show()
-            if (ok) refreshAll()
+            if (ok) {
+                if (Store.activeProvider.isNullOrBlank()) {
+                    Providers.all().firstOrNull()?.let { Providers.select(it) }
+                }
+                refreshAll()
+            }
         }
     }
 

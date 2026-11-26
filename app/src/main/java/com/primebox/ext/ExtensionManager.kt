@@ -257,21 +257,134 @@ object ExtensionManager {
 
     // ------------------------------------------------------------------- repos
 
-    private fun httpGet(url: String): String {
+    // ------------------------------------------------------------ url handling
+
+    data class Preset(val name: String, val url: String)
+
+    /** Known-good repositories offered as one-tap presets. */
+    val PRESETS = listOf(
+        Preset(
+            "Cloudstream providers repository (official)",
+            "https://raw.githubusercontent.com/recloudstream/extensions/master/repo.json"
+        )
+    )
+
+    private val noRedirectClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
+        .build()
+
+    /**
+     * Turns whatever the user pasted into a fetchable URL — same rules CloudStream uses:
+     * `cloudstreamrepo://…`, `https://cs.repo/?…`, a bare `github.com/user/repo` link,
+     * a GitHub blob link, or a short code (resolved through py.md / cutt.ly).
+     */
+    suspend fun normalizeRepoUrl(input: String): String = withContext(Dispatchers.IO) {
+        var url = input.trim()
+        if (url.isEmpty()) return@withContext url
+
+        url = url.removePrefix("cloudstreamrepo://")
+        url = Regex("^https?://cs\\.repo/\\??").replace(url, "")
+
+        // short codes like "abc123" or "!abc123"
+        if (Regex("^[a-zA-Z0-9!_-]+$").matches(url)) {
+            val resolved = resolveShortCode(url)
+            if (resolved != null) return@withContext resolved
+        }
+
+        // GitHub web links -> raw content
+        val gh = Regex("^https?://(www\\.)?github\\.com/([^/]+)/([^/]+)(/.*)?$").find(url)
+        if (gh != null) {
+            val user = gh.groupValues[2]
+            val repo = gh.groupValues[3].removeSuffix(".git")
+            val rest = gh.groupValues[4]
+            url = when {
+                rest.startsWith("/blob/") ->
+                    "https://raw.githubusercontent.com/$user/$repo/" + rest.removePrefix("/blob/")
+                rest.startsWith("/raw/") ->
+                    "https://raw.githubusercontent.com/$user/$repo/" + rest.removePrefix("/raw/")
+                else -> "https://raw.githubusercontent.com/$user/$repo/master/repo.json"
+            }
+        }
+
+        if (!url.startsWith("http://") && !url.startsWith("https://")) {
+            url = "https://$url"
+        }
+        url
+    }
+
+    private fun resolveShortCode(code: String): String? {
+        val attempts = if (code.startsWith("!")) {
+            listOf("https://py.md/${code.removePrefix("!")}")
+        } else {
+            listOf("https://py.md/$code", "https://cutt.ly/$code")
+        }
+        for (attempt in attempts) {
+            runCatching {
+                val request = Request.Builder().url(attempt).header("User-Agent", USER_AGENT).build()
+                noRedirectClient.newCall(request).execute().use { response ->
+                    val location = response.header("Location")
+                    if (location != null &&
+                        !location.contains("404") &&
+                        !location.removeSuffix("/").endsWith("py.md") &&
+                        !location.removeSuffix("/").endsWith("cutt.ly")
+                    ) {
+                        return location
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    /** raw.githubusercontent.com -> cdn.jsdelivr.net mirror (helps on blocked networks). */
+    private fun jsdelivrMirror(url: String): String? {
+        val match = Regex("^https?://raw\\.githubusercontent\\.com/([^/]+)/([^/]+)/(.+)$").find(url) ?: return null
+        val user = match.groupValues[1]
+        val repo = match.groupValues[2]
+        val rest = match.groupValues[3]
+        return "https://cdn.jsdelivr.net/gh/$user/$repo@$rest"
+    }
+
+    private fun httpGetOnce(url: String): String {
         val request = Request.Builder().url(url).header("User-Agent", USER_AGENT).build()
         return client.newCall(request).execute().use { response ->
             val body = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw IllegalStateException("HTTP ${response.code} ${response.message} — ${body.take(120).replace("\n", " ")}")
+                throw IllegalStateException("HTTP ${response.code} ${response.message} — ${body.take(100).replace("\n", " ")}")
             }
             body
         }
     }
 
+    /** Tries the URL, then the jsDelivr mirror, then master/main variants of repo.json. */
+    private fun httpGet(url: String): String {
+        val candidates = LinkedHashSet<String>()
+        candidates.add(url)
+        jsdelivrMirror(url)?.let { candidates.add(it) }
+        if (url.contains("/master/repo.json")) {
+            candidates.add(url.replace("/master/repo.json", "/main/repo.json"))
+        } else if (url.contains("/main/repo.json")) {
+            candidates.add(url.replace("/main/repo.json", "/master/repo.json"))
+        }
+
+        var last: Throwable? = null
+        for (candidate in candidates) {
+            try {
+                return httpGetOnce(candidate)
+            } catch (t: Throwable) {
+                last = t
+            }
+        }
+        throw last ?: IllegalStateException("Could not fetch $url")
+    }
+
     private fun parseJson(text: String): Any {
         val trimmed = text.trimStart()
         if (trimmed.startsWith("<")) {
-            throw IllegalStateException("Server returned HTML, not JSON (wrong URL?)")
+            throw IllegalStateException("Server returned a web page, not JSON — use the raw repo.json link")
         }
         return if (trimmed.startsWith("[")) JSONArray(text) else JSONObject(text)
     }
@@ -286,53 +399,58 @@ object ExtensionManager {
         }
     }
 
+    data class RepoInfo(
+        val url: String,
+        val name: String,
+        val description: String?,
+        val plugins: List<RepoPlugin>
+    )
+
     /**
-     * Resolves a repository URL into plugins.
-     *
-     * Supports the three shapes found in the wild:
-     *  1. a bare JSON array of plugins
-     *  2. `{ "plugins": [...] }`
-     *  3. `{ "pluginLists": ["https://…/plugins.json", …] }`  ← real CloudStream repos
+     * Resolves a repository URL into plugins, accepting every shape found in the wild:
+     *  1. `{ "pluginLists": [url, …] }`   ← real CloudStream repositories
+     *  2. `{ "plugins": [ … ] }`
+     *  3. a bare JSON array of plugins
+     *  4. a bare JSON array of plugin-list URLs
      */
-    suspend fun fetchRepo(repoUrl: String): List<RepoPlugin> = withContext(Dispatchers.IO) {
+    suspend fun fetchRepo(rawUrl: String): RepoInfo = withContext(Dispatchers.IO) {
+        val repoUrl = normalizeRepoUrl(rawUrl)
         val root = parseJson(httpGet(repoUrl))
+
+        var repoName = "Repository"
+        var repoDescription: String? = null
         val arrays = ArrayList<JSONArray>()
 
         fun collect(node: Any?) {
             when (node) {
                 is JSONArray -> {
-                    // A plugin list is an array of objects that have a `url` field.
                     val firstObject = (0 until node.length())
                         .mapNotNull { node.optJSONObject(it) }
                         .firstOrNull()
-                    if (firstObject != null && firstObject.has("url")) {
+                    if (firstObject != null && (firstObject.has("url") || firstObject.has("jarUrl"))) {
                         arrays.add(node)
                     } else {
-                        // Otherwise treat it as a list of URLs to plugin files.
                         for (i in 0 until node.length()) {
                             val value = node.optString(i)
                             if (value.startsWith("http") || value.endsWith(".json")) {
-                                runCatching {
-                                    collect(parseJson(httpGet(resolve(repoUrl, value))))
-                                }
+                                runCatching { collect(parseJson(httpGet(resolve(repoUrl, value)))) }
                             }
                         }
                     }
                 }
 
                 is JSONObject -> {
-                    node.optJSONArray("plugins")?.let { collect(it) }
+                    node.optString("name").takeIf { it.isNotBlank() }?.let { repoName = it }
+                    node.optString("description").takeIf { it.isNotBlank() }?.let { repoDescription = it }
                     node.optJSONArray("pluginLists")?.let { lists ->
                         for (i in 0 until lists.length()) {
                             val listUrl = lists.optString(i)
                             if (listUrl.isNotBlank()) {
-                                runCatching {
-                                    collect(parseJson(httpGet(resolve(repoUrl, listUrl))))
-                                }
+                                runCatching { collect(parseJson(httpGet(resolve(repoUrl, listUrl)))) }
                             }
                         }
                     }
-                    // some repos wrap the list in "data" or "extensions"
+                    node.optJSONArray("plugins")?.let { collect(it) }
                     node.optJSONArray("data")?.let { collect(it) }
                     node.optJSONArray("extensions")?.let { collect(it) }
                 }
@@ -341,7 +459,7 @@ object ExtensionManager {
 
         collect(root)
         if (arrays.isEmpty()) {
-            throw IllegalStateException("No plugin list found — check that this is a CloudStream repository URL")
+            throw IllegalStateException("No plugin list found — is this a CloudStream repository link?")
         }
 
         val out = LinkedHashMap<String, RepoPlugin>()
@@ -349,6 +467,8 @@ object ExtensionManager {
             for (i in 0 until array.length()) {
                 val o = array.optJSONObject(i) ?: continue
                 val url = o.optString("url")
+                    .ifBlank { o.optString("jarUrl") }
+                    .ifBlank { o.optString("apkUrl") }
                 if (url.isBlank()) continue
                 val authors = ArrayList<String>()
                 o.optJSONArray("authors")?.let { a ->
@@ -373,23 +493,43 @@ object ExtensionManager {
         if (out.isEmpty()) {
             throw IllegalStateException("Repository listed no installable extensions")
         }
-        out.values.toList()
+        RepoInfo(repoUrl, repoName, repoDescription, out.values.toList())
     }
 
     suspend fun install(context: Context, plugin: RepoPlugin): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         try {
             val target = File(extensionDir(context), sanitize(plugin.internalName + ".cs3"))
             val tmp = File(context.cacheDir, "dl_${System.currentTimeMillis()}.cs3")
-            val request = Request.Builder().url(plugin.url).header("User-Agent", USER_AGENT).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    return@withContext false to "Download failed: HTTP ${response.code}"
-                }
-                val body = response.body ?: return@withContext false to "Download failed: empty body"
-                body.byteStream().use { input ->
-                    tmp.outputStream().use { output -> input.copyTo(output) }
+
+            val candidates = LinkedHashSet<String>()
+            candidates.add(plugin.url)
+            jsdelivrMirror(plugin.url)?.let { candidates.add(it) }
+
+            var lastError: String? = null
+            var downloaded = false
+            for (candidate in candidates) {
+                try {
+                    val request = Request.Builder().url(candidate).header("User-Agent", USER_AGENT).build()
+                    client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            lastError = "HTTP ${response.code} from $candidate"
+                            return@use
+                        }
+                        val body = response.body ?: return@use
+                        body.byteStream().use { input ->
+                            tmp.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        downloaded = tmp.length() > 0
+                    }
+                    if (downloaded) break
+                } catch (t: Throwable) {
+                    lastError = "${t.javaClass.simpleName}: ${t.message}"
                 }
             }
+            if (!downloaded) {
+                return@withContext false to (lastError ?: "Download failed")
+            }
+
             if (!plugin.fileHash.isNullOrBlank()) {
                 val hash = sha256(tmp)
                 if (hash != plugin.fileHash) {
@@ -400,7 +540,7 @@ object ExtensionManager {
             tmp.copyTo(target, overwrite = true)
             tmp.delete()
             val ok = loadFile(context, target)
-            ok to if (ok) "Installed ${plugin.name}" else (lastError ?: "Downloaded, but extension failed to load")
+            ok to if (ok) "Installed ${plugin.name}" else (this.lastError ?: "Downloaded, but extension failed to load")
         } catch (t: Throwable) {
             Log.e(TAG, "install failed", t)
             false to "${t.javaClass.simpleName}: ${t.message}"
