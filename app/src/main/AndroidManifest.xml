@@ -21,46 +21,17 @@
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".MainActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="true"
-            android:launchMode="singleTop">
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.PrimeBox">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.DetailActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.PlayerActivity"
-            android:configChanges="orientation|screenSize|smallestScreenSize|keyboardHidden|screenLayout|uiMode"
-            android:exported="false"
-            android:supportsPictureInPicture="true" />
-
-        <activity
-            android:name=".ui.SearchActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.ExtensionsActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.DiagnosticsActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.SettingsActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

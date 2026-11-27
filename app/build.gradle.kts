@@ -10,8 +10,8 @@ android {
         applicationId = "com.primebox.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 11
-        versionName = "2.0.0"
+        versionCode = 12
+        versionName = "3.0.0"
         resourceConfigurations += listOf("en")
 
         ndk {
@@ -60,6 +60,7 @@ android {
 
     buildFeatures {
         buildConfig = true
+        compose = true
     }
 
     lint {
@@ -98,6 +99,17 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.2")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
+
+    // ---- Jetpack Compose (same stack CloudStream uses) ----
+    implementation(platform("androidx.compose:compose-bom:2025.06.01"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
+    implementation("androidx.activity:activity-compose:1.9.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
+    implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
