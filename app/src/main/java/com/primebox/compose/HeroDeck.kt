@@ -319,7 +319,9 @@ private fun GlassAction(modifier: Modifier, onClick: () -> Unit, content: @Compo
     Row(
         modifier
             .height(50.dp)
-            .glass(RoundedCornerShape(16.dp), strong = true)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.42f))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

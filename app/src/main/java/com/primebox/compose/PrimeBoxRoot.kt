@@ -182,11 +182,12 @@ fun PrimeBoxRoot(
                             onBack = { stack.removeAt(stack.lastIndex) }
                         )
 
-                        is Route.Detail -> DetailScreen(
+                        is Route.Detail -> DetailSheetScreen(
                             url = r.url,
                             title = r.name,
                             poster = r.poster,
                             apiName = r.api,
+                            quality = null,
                             ctx = ctx,
                             onBack = { stack.removeAt(stack.lastIndex) },
                             onPlay = { link, title ->

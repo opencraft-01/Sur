@@ -214,11 +214,17 @@ fun Modifier.glass(shape: Shape = RoundedCornerShape(16.dp), strong: Boolean = f
     val shadowMod = if (!c.isDark) {
         Modifier.shadow(10.dp, shape, ambientColor = Color(0x22000000), spotColor = Color(0x22000000))
     } else Modifier
+    // Light theme needs a nearly opaque surface, otherwise glass-on-white is invisible
+    val fill = if (c.isDark) {
+        if (strong) c.glassStrong else c.glass
+    } else {
+        if (strong) c.sheet.copy(alpha = 0.97f) else c.sheet.copy(alpha = 0.90f)
+    }
     return this
         .then(shadowMod)
         .clip(shape)
-        .background(if (strong) c.glassStrong else c.glass)
-        .border(1.dp, c.glassBorder, shape)
+        .background(fill)
+        .border(1.dp, if (c.isDark) c.glassBorder else c.text.copy(alpha = 0.10f), shape)
 }
 
 @Composable
@@ -322,13 +328,27 @@ fun GlassIconButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 44.dp,
-    tint: Color = Cine.c.text
+    tint: Color = Cine.c.text,
+    /** true when the button sits on artwork: uses a dark scrim in both themes */
+    overArt: Boolean = false
 ) {
-    Box(
-        modifier.size(size).glass(CircleShape).clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.5f))
+    val base = modifier.size(size)
+    val styled = if (overArt) {
+        base
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.42f))
+            .border(1.dp, Color.White.copy(alpha = 0.22f), CircleShape)
+            .clickable(onClick = onClick)
+    } else {
+        base.glass(CircleShape).clickable(onClick = onClick)
+    }
+    Box(styled, contentAlignment = Alignment.Center) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (overArt) Color.White else tint,
+            modifier = Modifier.size(size * 0.5f)
+        )
     }
 }
 
