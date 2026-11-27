@@ -302,6 +302,20 @@ fun PosterArt(
     }
 }
 
+/** Hero-model overload, so the ported CineGlass deck can draw a Movie directly. */
+@Composable
+fun PosterArt(
+    movie: Movie,
+    modifier: Modifier = Modifier,
+    showTitle: Boolean = false,
+    titleSize: TextUnit = 22.sp
+) = PosterArt(
+    card = Card(movie.title, movie.videoUrl, movie.posterUrl, movie.genre, movie.quality, null),
+    modifier = modifier,
+    showTitle = showTitle,
+    titleSize = titleSize
+)
+
 @Composable
 fun GlassIconButton(
     icon: ImageVector,

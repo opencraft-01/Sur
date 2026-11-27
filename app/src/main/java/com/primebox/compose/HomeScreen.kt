@@ -195,7 +195,17 @@ fun HomeScreen(
             }
 
             if (heroItems.isNotEmpty()) {
-                item { HeroCarousel(heroItems, ctx, onOpenDetail) }
+                item {
+                    val heroMovies = remember(heroItems) {
+                        heroItems.mapIndexed { index, card -> card.toMovie(index) }
+                    }
+                    HeroStage(
+                        movies = heroMovies,
+                        ctx = ctx,
+                        onOpen = { movie -> onOpenDetail(movie.toCard()) },
+                        onPlay = { movie -> onOpenDetail(movie.toCard()) }
+                    )
+                }
             }
 
             item {
