@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -79,11 +81,11 @@ fun SearchScreen(onOpenDetail: (Card) -> Unit, onBack: () -> Unit) {
             .padding(horizontal = 18.dp)
     ) {
         Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "←",
-                fontSize = 20.sp,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(end = 12.dp).clickable { onBack() }
+            androidx.compose.material3.Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
             )
             Text("Search", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
         }

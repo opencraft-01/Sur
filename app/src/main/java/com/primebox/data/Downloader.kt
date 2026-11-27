@@ -41,7 +41,8 @@ object Downloader {
         var filePath: String? = null,
         var bytes: Long = 0L,
         var totalBytes: Long = 0L,
-        var speed: Long = 0L
+        var speed: Long = 0L,
+        var indeterminate: Boolean = false
     )
 
     private val client = OkHttpClient.Builder()
@@ -155,6 +156,7 @@ object Downloader {
             val body = response.body ?: error("empty body")
             val total = body.contentLength()
             item.totalBytes = if (total > 0) total else 0L
+            item.indeterminate = total <= 0
             body.byteStream().use { input ->
                 target.outputStream().use { output ->
                     val buffer = ByteArray(128 * 1024)
@@ -178,11 +180,15 @@ object Downloader {
                         }
                         if (total > 0) {
                             val pct = ((written * 100) / total).toInt().coerceIn(0, 99)
-                            if (pct != item.progress && now - lastTick > 350) {
+                            if (pct != item.progress && now - lastTick > 300) {
                                 item.progress = pct
                                 lastTick = now
                                 notifyChanged()
                             }
+                        } else if (now - lastTick > 300) {
+                            // unknown size: keep bytes / speed fresh for the UI
+                            lastTick = now
+                            notifyChanged()
                         }
                     }
                 }
@@ -229,21 +235,35 @@ object Downloader {
         var windowBytes = 0L
         target.outputStream().use { output ->
             segments.forEachIndexed { index, segment ->
-                client.newCall(request(segment, item)).execute().use { response ->
-                    if (!response.isSuccessful) error("segment HTTP ${response.code}")
-                    val body = response.body ?: return@use
-                    body.byteStream().use { input ->
-                        val buffer = ByteArray(128 * 1024)
-                        while (true) {
-                            val read = input.read(buffer)
-                            if (read <= 0) break
-                            output.write(buffer, 0, read)
-                            written += read
-                            windowBytes += read
-                            item.bytes = written
+                // some CDNs drop a segment now and then: retry before giving up
+                var attempt = 0
+                var ok = false
+                var lastError: Throwable? = null
+                while (attempt < 3 && !ok) {
+                    try {
+                        client.newCall(request(segment, item)).execute().use { response ->
+                            if (!response.isSuccessful) error("segment HTTP ${response.code}")
+                            val body = response.body ?: error("empty segment")
+                            body.byteStream().use { input ->
+                                val buffer = ByteArray(128 * 1024)
+                                while (true) {
+                                    val read = input.read(buffer)
+                                    if (read <= 0) break
+                                    output.write(buffer, 0, read)
+                                    written += read
+                                    windowBytes += read
+                                    item.bytes = written
+                                }
+                            }
                         }
+                        ok = true
+                    } catch (t: Throwable) {
+                        lastError = t
+                        attempt++
+                        Thread.sleep(350L * attempt)
                     }
                 }
+                if (!ok) error("segment ${index + 1} failed: ${lastError?.message}")
                 val now = System.currentTimeMillis()
                 val elapsed = now - windowStart
                 if (elapsed >= 400) {

@@ -16,13 +16,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -64,6 +72,7 @@ private const val CACHE_TTL_MS = 30L * 60L * 1000L
  * CloudStream-style home: search bar on top, hero carousel, type chips, then rows
  * of 114x180 cards with the title inside the card.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     refreshKey: Int,
@@ -81,6 +90,7 @@ fun HomeScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var selectedType by remember { mutableStateOf<String?>(null) }
     var reload by remember { mutableStateOf(0) }
+    var sheetRow by remember { mutableStateOf<HomeCache.Row?>(null) }
 
     LaunchedEffect(refreshKey) {
         provider = Providers.active()
@@ -139,6 +149,42 @@ fun HomeScreen(
     val continueWatching = remember(refreshKey) {
         com.primebox.data.Store.history().take(12).map {
             Card(it.title, it.url, it.poster, null, null, it.provider)
+        }
+    }
+
+    // "See all" popup: same idea as CloudStream's row "more info" bottom sheet
+    sheetRow?.let { row ->
+        ModalBottomSheet(
+            onDismissRequest = { sheetRow = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp)) {
+                Text(
+                    row.name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                Text(
+                    "${row.items.size} titles",
+                    fontSize = 11.5.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)
+                ) {
+                    gridItems(row.items) { card ->
+                        PosterCard(card, width = 104, height = 150) {
+                            sheetRow = null
+                            onOpenDetail(card)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -231,7 +277,7 @@ fun HomeScreen(
             }
             visibleRows.forEach { row ->
                 item(key = row.name) {
-                    SectionHeader(row.name, "›") { }
+                    SectionHeader(row.name, "›") { sheetRow = row }
                     LazyRow(
                         contentPadding = PaddingValues(start = 15.dp, end = 5.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -425,7 +471,7 @@ private fun TypeChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        item { PillChip("🎲 Random", false) { onRandom() } }
+        item { IconChip(Icons.Filled.Shuffle, "Random", false) { onRandom() } }
         item { PillChip("All", selected == null) { onSelect(null) } }
         items(types) { type ->
             PillChip(type, selected == type) { onSelect(type) }

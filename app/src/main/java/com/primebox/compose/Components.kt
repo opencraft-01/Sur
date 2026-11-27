@@ -173,6 +173,35 @@ fun PillChip(
     }
 }
 
+/** Pill chip with a leading Material icon (no emoji). */
+@Composable
+fun IconChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    text: String,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.material3.Icon(
+                icon,
+                contentDescription = text,
+                modifier = Modifier.size(15.dp)
+            )
+            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+            Text(text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+        }
+    }
+}
+
 /** Small label badge. */
 @Composable
 fun Badge(
@@ -250,14 +279,18 @@ fun EmptyState(
 }
 
 /**
- * Smooth Material-3 style wavy progress line, same behaviour as the old view:
- * the wave travels while a transfer runs and the fill animates to the new value.
+ * Premium Material-3 style progress line: a calm travelling wave over the filled
+ * part, spring-animated fill and a soft head dot. Amplitude is deliberately tiny
+ * so it reads as a smooth line, not a zigzag.
  */
 @Composable
-fun WavyProgress(progress: Float, modifier: Modifier = Modifier) {
+fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: Boolean = false) {
     val animated by androidx.compose.animation.core.animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = tween(480),
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = 0.9f,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
         label = "wavyProgress"
     )
     val transition = rememberInfiniteTransition(label = "wave")
@@ -265,16 +298,27 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier) {
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = LinearEasing),
+            animation = tween(2200, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "wavePhase"
     )
+    val sweep by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweep"
+    )
+
     val track = MaterialTheme.colorScheme.surfaceContainerHigh
     val accent = MaterialTheme.colorScheme.primary
+    val accentSoft = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
 
-    androidx.compose.foundation.Canvas(modifier = modifier.height(22.dp).fillMaxWidth()) {
-        val stroke = 7.dp.toPx()
+    androidx.compose.foundation.Canvas(modifier = modifier.height(20.dp).fillMaxWidth()) {
+        val stroke = 5.dp.toPx()
         val cy = size.height / 2f
         val startX = stroke / 2f + 1f
         val endX = size.width - stroke / 2f - 1f
@@ -288,28 +332,38 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier) {
             cap = StrokeCap.Round
         )
 
-        val fillEnd = startX + (endX - startX) * animated
-        if (fillEnd <= startX + 1f) return@Canvas
+        val from = if (indeterminate) startX + (endX - startX) * ((sweep * 1.4f) % 1f) - (endX - startX) * 0.25f else startX
+        val to = if (indeterminate) from + (endX - startX) * 0.3f else startX + (endX - startX) * animated
+        val a = from.coerceIn(startX, endX)
+        val b = to.coerceIn(startX, endX)
+        if (b <= a + 1f) return@Canvas
 
-        val amplitude = size.height * 0.17f
-        val wavelength = 44.dp.toPx()
+        // very gentle wave: 1.1dp amplitude, 72dp wavelength
+        val amplitude = 1.1.dp.toPx()
+        val wavelength = 72.dp.toPx()
         val path = Path()
-        path.moveTo(startX, cy)
-        var x = startX
-        while (x < fillEnd) {
+        path.moveTo(a, cy)
+        var x = a
+        while (x < b) {
             val y = cy + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase)
             path.lineTo(x, y)
-            x += 3f
+            x += 2f
         }
-        val endY = cy + amplitude * sin((fillEnd / wavelength) * 2 * PI.toFloat() + phase)
-        path.lineTo(fillEnd, endY)
+        val endY = cy + amplitude * sin((b / wavelength) * 2 * PI.toFloat() + phase)
+        path.lineTo(b, endY)
 
         drawPath(
             path = path,
-            color = accent,
-            style = Stroke(width = stroke, cap = StrokeCap.Round)
+            brush = Brush.horizontalGradient(
+                colors = listOf(accentSoft, accent),
+                startX = a,
+                endX = b
+            ),
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
         )
-        drawCircle(color = accent, radius = stroke * 0.72f, center = Offset(fillEnd, endY))
+        // soft head
+        drawCircle(color = accent.copy(alpha = 0.25f), radius = stroke * 1.1f, center = Offset(b, endY))
+        drawCircle(color = accent, radius = stroke * 0.62f, center = Offset(b, endY))
     }
 }
 

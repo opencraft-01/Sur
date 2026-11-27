@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -198,11 +200,11 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                     )
                 }
             }
-            Text(
-                "🗑",
-                fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clickable { onDelete() }.padding(8.dp)
+            androidx.compose.material3.Icon(
+                Icons.Filled.Delete,
+                contentDescription = "Delete download",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.clickable { onDelete() }.padding(8.dp).size(20.dp)
             )
         }
     }

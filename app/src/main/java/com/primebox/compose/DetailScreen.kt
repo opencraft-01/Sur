@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +58,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
+/** In-memory caches so reopening a title or a source list is instant. */
+private val detailCache = HashMap<String, LoadResponse>()
+private val linkCache = HashMap<String, List<ExtractorLink>>()
+
 @Composable
 fun DetailScreen(
     url: String,
@@ -76,9 +84,15 @@ fun DetailScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
     LaunchedEffect(url) {
+        detailCache[url]?.let { cached ->
+            response = cached
+            loading = false
+            status = listOfNotNull(cached.year?.toString(), cached.type.name).joinToString("   •   ")
+            return@LaunchedEffect
+        }
         val api = provider ?: run { loading = false; status = "No extension"; return@LaunchedEffect }
         val result = withContext(Dispatchers.IO) {
-            runCatching { withTimeout(30_000) { api.load(url) } }
+            runCatching { withTimeout(20_000) { api.load(url) } }
         }
         loading = false
         val loaded = result.getOrNull()
@@ -86,29 +100,40 @@ fun DetailScreen(
             status = result.exceptionOrNull()?.message ?: "Could not load"
             return@LaunchedEffect
         }
+        detailCache[url] = loaded
         response = loaded
         status = listOfNotNull(loaded.year?.toString(), loaded.type.name).joinToString("   •   ")
     }
 
     fun fetchLinks(data: String, linkTitle: String) {
+        linkCache[data]?.let { cached ->
+            links = cached
+            return
+        }
         val api = provider ?: return
         linksLoading = true
         scope.launch {
             val collected = withContext(Dispatchers.IO) {
                 val out = ArrayList<ExtractorLink>()
-                runCatching {
-                    withTimeout(45_000) {
-                        api.loadLinks(
-                            data = data,
-                            isCasting = false,
-                            subtitleCallback = { _: SubtitleFile -> },
-                            callback = { out.add(it) }
-                        )
+                repeat(2) { attempt ->
+                    if (out.isEmpty()) {
+                        runCatching {
+                            withTimeout(25_000) {
+                                api.loadLinks(
+                                    data = data,
+                                    isCasting = false,
+                                    subtitleCallback = { _: SubtitleFile -> },
+                                    callback = { link -> out.add(link) }
+                                )
+                            }
+                        }
+                        if (out.isEmpty() && attempt == 0) Thread.sleep(400)
                     }
                 }
                 out.sortedByDescending { it.quality }
             }
             links = collected
+            if (collected.isNotEmpty()) linkCache[data] = collected
             linksLoading = false
             if (collected.isEmpty()) status = "No playable source found"
         }
@@ -141,14 +166,15 @@ fun DetailScreen(
                     .fillMaxSize()
                     .background(Brush.verticalGradient(0.4f to Color.Transparent, 1f to Color(0xF20A0A0D)))
             )
-            Text(
-                "←",
-                color = Color.White,
-                fontSize = 22.sp,
+            androidx.compose.material3.Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Back",
+                tint = Color.White,
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .clickable { onBack() }
                     .padding(16.dp)
+                    .size(22.dp)
             )
         }
 
@@ -235,18 +261,18 @@ fun DetailScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text(
-                                "⤓",
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.Download,
+                                contentDescription = "Download",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.clickable {
                                     download(context, link, title, poster)
-                                }.padding(8.dp)
+                                }.padding(8.dp).size(20.dp)
                             )
-                            Text(
-                                "▶",
-                                fontSize = 18.sp,
-                                color = MaterialTheme.colorScheme.primary,
+                            androidx.compose.material3.Icon(
+                                Icons.Filled.PlayArrow,
+                                contentDescription = "Play",
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.clickable {
                                     Store.addHistory(
                                         Store.HistoryEntry(

@@ -16,6 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -92,8 +97,12 @@ fun ExtensionsScreen(onBack: () -> Unit) {
     ) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("←", fontSize = 20.sp, color = MaterialTheme.colorScheme.onBackground,
-                    modifier = Modifier.padding(end = 12.dp).clickable { onBack() })
+                androidx.compose.material3.Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
+                )
                 Text("Extensions", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onBackground)
             }
             Text(
@@ -179,13 +188,14 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            "🗑",
-                            fontSize = 16.sp,
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Delete,
+                            contentDescription = "Remove",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.clickable {
                                 ExtensionManager.unload(context, item)
                                 refresh()
-                            }.padding(8.dp)
+                            }.padding(8.dp).size(20.dp)
                         )
                     }
                 }
@@ -250,14 +260,20 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        Text("⟳", fontSize = 16.sp, modifier = Modifier.clickable { loadRepo(repoUrl) }.padding(8.dp))
-                        Text(
-                            "✕",
-                            fontSize = 14.sp,
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Refresh,
+                            contentDescription = "Reload repository",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.clickable { loadRepo(repoUrl) }.padding(8.dp).size(18.dp)
+                        )
+                        androidx.compose.material3.Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Remove repository",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.clickable {
                                 Store.removeRepository(repoUrl)
                                 refresh()
-                            }.padding(8.dp)
+                            }.padding(8.dp).size(18.dp)
                         )
                     }
                     repoState[repoUrl]?.let {

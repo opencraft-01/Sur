@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -138,27 +139,12 @@ fun PrimeBoxRoot(
         },
         floatingActionButton = {
             if (current is Route.Home) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                FloatingActionButton(
+                    onClick = { showSwitcher = true },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
-                    // CloudStream's "Random" button
-                    FloatingActionButton(
-                        onClick = { randomTick++ },
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                        contentColor = MaterialTheme.colorScheme.onSurface
-                    ) {
-                        Text("\uD83C\uDFB2", fontSize = 18.sp)
-                    }
-                    // CloudStream's "Source" button
-                    FloatingActionButton(
-                        onClick = { showSwitcher = true },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ) {
-                        Text("\u29C9", fontSize = 20.sp)
-                    }
+                    Icon(Icons.Filled.Layers, contentDescription = "Source")
                 }
             }
         }

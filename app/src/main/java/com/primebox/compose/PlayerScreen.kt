@@ -3,6 +3,7 @@ package com.primebox.compose
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.view.ViewGroup
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -13,7 +14,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,8 +48,8 @@ private const val UA =
     "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36"
 
 /**
- * Inline player like YouTube: video at the top (16:9), details below, and a
- * fullscreen toggle that rotates into immersive landscape playback.
+ * YouTube-style player: opens inline at the top of the screen, the chrome stays
+ * visible, and fullscreen always has a visible exit control (plus system back).
  */
 @Composable
 fun PlayerScreen(
@@ -84,65 +94,100 @@ fun PlayerScreen(
         onDispose { }
     }
 
-    Column(Modifier.fillMaxSize().background(Color.Black)) {
-        Box(
-            Modifier
+    // system back exits fullscreen first, exactly like YouTube
+    BackHandler {
+        if (fullscreen) fullscreen = false else onBack()
+    }
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    this.player = player
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                    setBackgroundColor(android.graphics.Color.BLACK)
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                }
+            },
+            modifier = if (fullscreen) {
+                Modifier.fillMaxSize()
+            } else {
+                Modifier.fillMaxWidth().height(230.dp).align(Alignment.TopCenter)
+            }
+        )
+
+        // always-visible chrome: back + fullscreen toggle
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .height(if (fullscreen) 0.dp else 220.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (!fullscreen) {
-                AndroidView(
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            this.player = player
-                            setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT
-                            )
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
+            Surface(
+                color = Color.Black.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.clickable {
+                    if (fullscreen) fullscreen = false else onBack()
+                }
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp).size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            Text(
+                title,
+                color = Color.White,
+                fontSize = 13.sp,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+            Surface(
+                color = Color.Black.copy(alpha = 0.45f),
+                shape = RoundedCornerShape(50),
+                modifier = Modifier.clickable { fullscreen = !fullscreen }
+            ) {
+                Icon(
+                    if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (fullscreen) "Exit fullscreen" else "Fullscreen",
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp).size(20.dp)
                 )
             }
         }
 
-        if (fullscreen) {
-            AndroidView(
-                factory = { ctx ->
-                    PlayerView(ctx).apply {
-                        this.player = player
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                        setBackgroundColor(android.graphics.Color.BLACK)
-                    }
-                },
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Column(Modifier.padding(18.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "←",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        modifier = Modifier.padding(end = 12.dp).androidxClickable { onBack() }
-                    )
-                    Text(
-                        title,
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        maxLines = 1
-                    )
-                }
-                if (source.isNotBlank()) {
-                    Text(source, color = Color(0xFFC9CDD6), fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-                }
-                Spacer(Modifier.height(16.dp))
-                androidx.compose.material3.Button(onClick = { fullscreen = true }) { Text("⛶  Fullscreen") }
-                Spacer(Modifier.height(12.dp))
+        if (!fullscreen) {
+            Column(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .background(Color.Black)
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
                 Text(
-                    "Playback keeps running while you browse. Use fullscreen for a cinema view.",
+                    title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2
+                )
+                if (source.isNotBlank()) {
+                    Text(
+                        source,
+                        color = Color(0xFFC9CDD6),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Tap the fullscreen icon for a cinema view. System back exits fullscreen first.",
                     color = Color(0xFF9AA0A6),
                     fontSize = 11.5.sp
                 )
@@ -150,6 +195,3 @@ fun PlayerScreen(
         }
     }
 }
-
-private fun Modifier.androidxClickable(onClick: () -> Unit): Modifier =
-    this.clickable(onClick = onClick)
