@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -91,6 +92,18 @@ fun PlayerScreen(
         } else {
             ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
+        if (activity != null) {
+            val controller = androidx.core.view.WindowInsetsControllerCompat(
+                activity.window, activity.window.decorView
+            )
+            if (fullscreen) {
+                controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior =
+                    androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            }
+        }
         onDispose { }
     }
 
@@ -124,6 +137,7 @@ fun PlayerScreen(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

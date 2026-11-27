@@ -150,50 +150,83 @@ object Downloader {
         return builder.build()
     }
 
+    /**
+     * Progressive download with resume: if the transfer drops, the next attempt
+     * continues from the bytes already on disk (HTTP Range) instead of starting over.
+     */
     private fun downloadDirect(item: Item, target: File) {
-        client.newCall(request(item.url, item)).execute().use { response ->
-            if (!response.isSuccessful) error("HTTP ${response.code}")
-            val body = response.body ?: error("empty body")
-            val total = body.contentLength()
-            item.totalBytes = if (total > 0) total else 0L
-            item.indeterminate = total <= 0
-            body.byteStream().use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(128 * 1024)
-                    var written = 0L
-                    var windowStart = System.currentTimeMillis()
-                    var windowBytes = 0L
-                    var lastTick = 0L
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        output.write(buffer, 0, read)
-                        written += read
-                        windowBytes += read
-                        item.bytes = written
-                        val now = System.currentTimeMillis()
-                        val elapsed = now - windowStart
-                        if (elapsed >= 400) {
-                            item.speed = windowBytes * 1000L / elapsed
-                            windowStart = now
-                            windowBytes = 0L
-                        }
-                        if (total > 0) {
-                            val pct = ((written * 100) / total).toInt().coerceIn(0, 99)
-                            if (pct != item.progress && now - lastTick > 300) {
-                                item.progress = pct
-                                lastTick = now
-                                notifyChanged()
+        var attempts = 0
+        var lastError: Throwable? = null
+        while (attempts < 3) {
+            val resumeFrom = if (target.exists()) target.length() else 0L
+            try {
+                client.newCall(request(item.url, item, if (resumeFrom > 0) resumeFrom else null)).execute().use { response ->
+                    if (response.code == 416) {
+                        // server rejected the range: start clean
+                        target.delete()
+                        throw IllegalStateException("range rejected")
+                    }
+                    if (!response.isSuccessful && response.code != 206) {
+                        throw IllegalStateException("HTTP ${response.code}")
+                    }
+                    val appending = response.code == 206 && resumeFrom > 0
+                    val body = response.body ?: throw IllegalStateException("empty body")
+                    val length = body.contentLength()
+                    val total = when {
+                        length <= 0 -> 0L
+                        appending -> length + resumeFrom
+                        else -> length
+                    }
+                    item.totalBytes = total
+                    item.indeterminate = total <= 0
+                    item.bytes = resumeFrom
+                    item.progress = if (total > 0) ((resumeFrom * 100) / total).toInt().coerceIn(0, 99) else 0
+
+                    java.io.FileOutputStream(target, appending).use { output ->
+                        body.byteStream().use { input ->
+                            val buffer = ByteArray(128 * 1024)
+                            var written = resumeFrom
+                            var windowStart = System.currentTimeMillis()
+                            var windowBytes = 0L
+                            var lastTick = 0L
+                            while (true) {
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                output.write(buffer, 0, read)
+                                written += read
+                                windowBytes += read
+                                item.bytes = written
+                                val now = System.currentTimeMillis()
+                                val elapsed = now - windowStart
+                                if (elapsed >= 400) {
+                                    item.speed = windowBytes * 1000L / elapsed
+                                    windowStart = now
+                                    windowBytes = 0L
+                                }
+                                if (total > 0) {
+                                    val pct = ((written * 100) / total).toInt().coerceIn(0, 99)
+                                    if (pct != item.progress && now - lastTick > 300) {
+                                        item.progress = pct
+                                        lastTick = now
+                                        notifyChanged()
+                                    }
+                                } else if (now - lastTick > 300) {
+                                    lastTick = now
+                                    notifyChanged()
+                                }
                             }
-                        } else if (now - lastTick > 300) {
-                            // unknown size: keep bytes / speed fresh for the UI
-                            lastTick = now
-                            notifyChanged()
                         }
                     }
                 }
+                return
+            } catch (t: Throwable) {
+                lastError = t
+                attempts++
+                if (attempts >= 3) break
+                Thread.sleep(600L * attempts)
             }
         }
+        throw lastError ?: IllegalStateException("download failed")
     }
 
     private fun downloadHls(item: Item, target: File) {

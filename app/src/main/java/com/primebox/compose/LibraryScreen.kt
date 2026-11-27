@@ -183,7 +183,9 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                 Text(
                     when (item.state) {
                         Downloader.State.DONE -> "Downloaded  •  ${item.quality}p"
-                        Downloader.State.RUNNING -> "Downloading… ${item.progress}%"
+                        Downloader.State.RUNNING ->
+                            if (item.indeterminate || item.totalBytes <= 0) "Downloading…"
+                            else "Downloading… ${item.progress}%"
                         Downloader.State.FAILED -> "Failed — tap to retry"
                         else -> "Queued"
                     },
@@ -191,9 +193,20 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (running) {
-                    WavyProgress(item.progress / 100f, Modifier.padding(top = 6.dp))
+                    val unknown = item.indeterminate || item.totalBytes <= 0
+                    WavyProgress(
+                        progress = item.progress / 100f,
+                        modifier = Modifier.padding(top = 6.dp),
+                        indeterminate = unknown
+                    )
                     Text(
-                        "${item.progress}%   •   ${bytesLabel(item.bytes)} / ${bytesLabel(item.totalBytes)}   •   ${if (item.speed > 0) bytesLabel(item.speed) + "/s" else "—"}",
+                        buildString {
+                            if (!unknown) append("${item.progress}%   •   ")
+                            append(bytesLabel(item.bytes))
+                            if (item.totalBytes > 0) append(" / ${bytesLabel(item.totalBytes)}")
+                            append("   •   ")
+                            append(if (item.speed > 0) bytesLabel(item.speed) + "/s" else "—")
+                        },
                         fontSize = 10.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp)

@@ -206,18 +206,28 @@ fun DetailScreen(
                     )
                 }
             } else if (loading) {
-                CircularProgressIndicator(
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 20.dp).width(28.dp).height(28.dp)
-                )
+                // shimmer skeleton while the provider responds
+                Column(Modifier.padding(top = 16.dp)) {
+                    ShimmerBox(Modifier.fillMaxWidth().height(14.dp), corner = 6)
+                    Spacer(Modifier.height(8.dp))
+                    ShimmerBox(Modifier.fillMaxWidth(0.85f).height(14.dp), corner = 6)
+                    Spacer(Modifier.height(8.dp))
+                    ShimmerBox(Modifier.fillMaxWidth(0.6f).height(14.dp), corner = 6)
+                }
             }
 
             when (val res = loaded) {
                 is MovieLoadResponse -> {
                     Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = { fetchLinks(res.dataUrl, res.name) }) { Text("▶  Play") }
+                        Button(onClick = { fetchLinks(res.dataUrl, res.name) }) {
+                            androidx.compose.material3.Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Play")
+                        }
                         OutlinedButton(onClick = { fetchLinks(res.dataUrl, res.name) }) { Text("Sources") }
                     }
+                    // prefetch sources in the background so tapping Play is instant
+                    LaunchedEffect(res.dataUrl) { fetchLinks(res.dataUrl, res.name) }
                 }
 
                 is TvSeriesLoadResponse -> EpisodeList(res.episodes, res.name) { episode, name ->

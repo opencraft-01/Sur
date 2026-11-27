@@ -26,7 +26,9 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -317,8 +319,18 @@ private fun TopBar(
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f)
             )
-            Text("⚙", fontSize = 18.sp, modifier = Modifier.clickable { onOpenSettings() }.padding(8.dp))
-            Text("⧉", fontSize = 18.sp, modifier = Modifier.clickable { onOpenExtensions() }.padding(8.dp))
+            androidx.compose.material3.Icon(
+                Icons.Filled.Settings,
+                contentDescription = "Settings",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.clickable { onOpenSettings() }.padding(8.dp).size(20.dp)
+            )
+            androidx.compose.material3.Icon(
+                Icons.Filled.Layers,
+                contentDescription = "Extensions",
+                tint = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.clickable { onOpenExtensions() }.padding(8.dp).size(20.dp)
+            )
         }
         Spacer(Modifier.height(10.dp))
         Surface(

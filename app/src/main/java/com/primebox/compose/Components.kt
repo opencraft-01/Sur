@@ -318,7 +318,7 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: 
     val accentSoft = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
 
     androidx.compose.foundation.Canvas(modifier = modifier.height(20.dp).fillMaxWidth()) {
-        val stroke = 5.dp.toPx()
+        val stroke = 4.5.dp.toPx()
         val cy = size.height / 2f
         val startX = stroke / 2f + 1f
         val endX = size.width - stroke / 2f - 1f
@@ -338,9 +338,9 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: 
         val b = to.coerceIn(startX, endX)
         if (b <= a + 1f) return@Canvas
 
-        // very gentle wave: 1.1dp amplitude, 72dp wavelength
-        val amplitude = 1.1.dp.toPx()
-        val wavelength = 72.dp.toPx()
+        // gentle wave: 2dp amplitude, 60dp wavelength — visible but calm
+        val amplitude = 2.dp.toPx()
+        val wavelength = 60.dp.toPx()
         val path = Path()
         path.moveTo(a, cy)
         var x = a
