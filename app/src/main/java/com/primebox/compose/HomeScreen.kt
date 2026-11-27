@@ -67,6 +67,7 @@ private const val CACHE_TTL_MS = 30L * 60L * 1000L
 @Composable
 fun HomeScreen(
     refreshKey: Int,
+    randomTick: Int,
     onOpenDetail: (Card) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenExtensions: () -> Unit,
@@ -128,6 +129,18 @@ fun HomeScreen(
         }
     }
     val heroItems = visibleRows.firstOrNull()?.items?.take(5).orEmpty()
+
+    // CloudStream's Random button: open a random title from the loaded rows
+    LaunchedEffect(randomTick) {
+        if (randomTick <= 0) return@LaunchedEffect
+        val pool = visibleRows.flatMap { it.items }
+        if (pool.isNotEmpty()) onOpenDetail(pool.random())
+    }
+    val continueWatching = remember(refreshKey) {
+        com.primebox.data.Store.history().take(12).map {
+            Card(it.title, it.url, it.poster, null, null, it.provider)
+        }
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -203,11 +216,24 @@ fun HomeScreen(
                 )
             }
         } else {
+            if (continueWatching.isNotEmpty()) {
+                item(key = "continue") {
+                    SectionHeader("Continue watching")
+                    LazyRow(
+                        contentPadding = PaddingValues(start = 15.dp, end = 5.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(continueWatching) { card ->
+                            PosterCard(card = card, width = 114, height = 180) { onOpenDetail(card) }
+                        }
+                    }
+                }
+            }
             visibleRows.forEach { row ->
                 item(key = row.name) {
                     SectionHeader(row.name, "›") { }
                     LazyRow(
-                        contentPadding = PaddingValues(start = 14.dp, end = 4.dp),
+                        contentPadding = PaddingValues(start = 15.dp, end = 5.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(row.items) { card ->

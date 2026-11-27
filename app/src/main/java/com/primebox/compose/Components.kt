@@ -72,12 +72,13 @@ fun ShimmerBox(modifier: Modifier = Modifier, corner: Int = 16) {
     )
 }
 
-/** CloudStream-style poster card: fixed size, title inside over a scrim. */
+/** CloudStream-style poster card: 114x180, radius 10dp, title inside over a scrim. */
 @Composable
 fun PosterCard(
     card: Card,
     width: Int = 114,
     height: Int = 180,
+    progress: Float? = null,
     onClick: () -> Unit
 ) {
     Column(modifier = Modifier.width(width.dp).padding(end = 10.dp)) {
@@ -85,12 +86,12 @@ fun PosterCard(
             modifier = Modifier
                 .width(width.dp)
                 .height(height.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .clickable { onClick() }
         ) {
             if (card.poster.isNullOrBlank()) {
-                ShimmerBox(Modifier.fillMaxSize(), corner = 14)
+                ShimmerBox(Modifier.fillMaxSize(), corner = 10)
             } else {
                 AsyncImage(
                     model = card.poster,
@@ -104,23 +105,23 @@ fun PosterCard(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0.55f to Color.Transparent,
-                            1f to Color(0xF20A0A0D)
+                            0.62f to Color.Transparent,
+                            1f to Color(0xE60A0A0D)
                         )
                     )
             )
             if (!card.quality.isNullOrBlank()) {
                 Surface(
                     color = Color.Black.copy(alpha = 0.55f),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                    shape = RoundedCornerShape(5.dp),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
                 ) {
                     Text(
                         card.quality,
                         color = Color.White,
-                        fontSize = 9.5.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                     )
                 }
             }
@@ -128,13 +129,24 @@ fun PosterCard(
                 text = card.name,
                 color = Color.White,
                 fontSize = 11.5.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 2,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(horizontal = 7.dp, vertical = 6.dp)
+                    .padding(horizontal = 5.dp, vertical = 5.dp)
             )
+            if (progress != null) {
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { progress.coerceIn(0f, 1f) },
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.White.copy(alpha = 0.25f),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                )
+            }
         }
     }
 }
@@ -179,13 +191,13 @@ fun Badge(
     }
 }
 
-/** Section header with optional trailing action. */
+/** Section header, CloudStream spacing: 12dp vertical, 5dp text padding. */
 @Composable
 fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 8.dp),
+            .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -194,7 +206,7 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f).padding(horizontal = 5.dp)
         )
         if (action != null && onAction != null) {
             Text(

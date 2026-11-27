@@ -75,6 +75,7 @@ fun PrimeBoxRoot(
     val context = LocalContext.current
     val stack = remember { mutableStateListOf<Route>(Route.Home) }
     var refreshKey by remember { mutableStateOf(0) }
+    var randomTick by remember { mutableStateOf(0) }
     var showSwitcher by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<Updater.Info?>(null) }
 
@@ -137,12 +138,27 @@ fun PrimeBoxRoot(
         },
         floatingActionButton = {
             if (current is Route.Home) {
-                FloatingActionButton(
-                    onClick = { showSwitcher = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
                 ) {
-                    Text("⧉", fontSize = 20.sp)
+                    // CloudStream's "Random" button
+                    FloatingActionButton(
+                        onClick = { randomTick++ },
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        contentColor = MaterialTheme.colorScheme.onSurface
+                    ) {
+                        Text("\uD83C\uDFB2", fontSize = 18.sp)
+                    }
+                    // CloudStream's "Source" button
+                    FloatingActionButton(
+                        onClick = { showSwitcher = true },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentColor = MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Text("\u29C9", fontSize = 20.sp)
+                    }
                 }
             }
         }
@@ -151,6 +167,7 @@ fun PrimeBoxRoot(
             when (current) {
                 is Route.Home -> HomeScreen(
                     refreshKey = refreshKey,
+                    randomTick = randomTick,
                     onOpenDetail = { card ->
                         stack.add(Route.Detail(card.url, card.name, card.poster, card.api))
                     },
