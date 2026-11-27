@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.primebox.compose
 
 import androidx.compose.animation.animateColorAsState
@@ -78,7 +80,7 @@ class SharedCtx(
 fun Modifier.sharedPoster(ctx: SharedCtx?, key: String): Modifier =
     if (ctx == null) this else with(ctx.st) {
         this@sharedPoster.sharedElement(
-            state = rememberSharedContentState(key = key),
+            sharedContentState = rememberSharedContentState(key = key),
             animatedVisibilityScope = ctx.av
         )
     }
