@@ -246,7 +246,7 @@ fun HomeScreen(
                             Spacer(Modifier.height(6.dp))
                             Text(error ?: "", color = Cine.c.textMuted, fontSize = 12.sp)
                             Spacer(Modifier.height(14.dp))
-                            GlowButton("Retry") { reload++ }
+                            GlowButton("Retry", onClick = { reload++ })
                         }
                     }
                 }
@@ -262,7 +262,7 @@ fun HomeScreen(
                                 fontSize = 12.sp
                             )
                             Spacer(Modifier.height(14.dp))
-                            GlowButton("Open extensions") { onOpenExtensions() }
+                            GlowButton("Open extensions", onClick = { onOpenExtensions() })
                         }
                     }
                 }
