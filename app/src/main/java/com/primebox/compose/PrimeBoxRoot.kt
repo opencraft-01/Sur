@@ -2,6 +2,7 @@ package com.primebox.compose
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -303,4 +304,4 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
 }
 
 private fun Modifier.androidxClickable(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.foundation.clickable(onClick = onClick))
+    this.clickable(onClick = onClick)
