@@ -226,7 +226,8 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 5.dp),
+            .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 5.dp)
+            .let { base -> if (onAction != null) base.clickable { onAction() } else base },
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -238,12 +239,11 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
             modifier = Modifier.weight(1f).padding(horizontal = 5.dp)
         )
         if (action != null && onAction != null) {
-            Text(
-                action,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { onAction() }.padding(start = 8.dp)
+            androidx.compose.material3.Icon(
+                androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = "See all",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp).size(24.dp)
             )
         }
     }
