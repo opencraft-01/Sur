@@ -65,6 +65,24 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.primebox.data.Card
 
+// ---------------------------------------------------------------- shared elements
+
+/** Holder so screens can take part in shared element transitions. */
+class SharedCtx(
+    val st: androidx.compose.animation.SharedTransitionScope,
+    val av: androidx.compose.animation.AnimatedVisibilityScope
+)
+
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@Composable
+fun Modifier.sharedPoster(ctx: SharedCtx?, key: String): Modifier =
+    if (ctx == null) this else with(ctx.st) {
+        this@sharedPoster.sharedElement(
+            state = rememberSharedContentState(key = key),
+            animatedVisibilityScope = ctx.av
+        )
+    }
+
 // ---------------------------------------------------------------- design tokens
 
 @Immutable
@@ -232,7 +250,8 @@ fun PosterArt(
     card: Card,
     modifier: Modifier = Modifier,
     showTitle: Boolean = false,
-    titleSize: TextUnit = 22.sp
+    titleSize: TextUnit = 22.sp,
+    ctx: SharedCtx? = null
 ) {
     Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF2A2C38), Color(0xFF101116))))) {
         Canvas(Modifier.fillMaxSize()) {
@@ -425,7 +444,8 @@ fun MovieCard(
     modifier: Modifier = Modifier,
     width: Dp = 118.dp,
     height: Dp = 177.dp,
-    ribbon: String? = null
+    ribbon: String? = null,
+    ctx: SharedCtx? = null
 ) {
     val c = Cine.c
     Box(
@@ -435,7 +455,7 @@ fun MovieCard(
             .clip(RoundedCornerShape(10.dp))
             .clickable(onClick = onClick)
     ) {
-        PosterArt(card, Modifier.fillMaxSize())
+        PosterArt(card, Modifier.fillMaxSize().sharedPoster(ctx, "poster-${card.url}"))
         Box(
             Modifier.fillMaxSize().background(
                 Brush.verticalGradient(0.68f to Color.Transparent, 1f to Color(0x99000000))
@@ -479,12 +499,13 @@ fun EpisodeCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = 196.dp,
-    subtitle: String? = null
+    subtitle: String? = null,
+    ctx: SharedCtx? = null
 ) {
     val c = Cine.c
     Column(modifier.width(width).clickable(onClick = onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))) {
-            PosterArt(card, Modifier.fillMaxSize())
+            PosterArt(card, Modifier.fillMaxSize().sharedPoster(ctx, "poster-${card.url}"))
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xAA000000))

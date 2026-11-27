@@ -69,6 +69,7 @@ fun DetailScreen(
     title: String,
     poster: String?,
     apiName: String?,
+    ctx: SharedCtx? = null,
     onBack: () -> Unit,
     onPlay: (ExtractorLink, String) -> Unit
 ) {
@@ -153,11 +154,9 @@ fun DetailScreen(
                 .background(Cine.c.glass)
         ) {
             if (!poster.isNullOrBlank()) {
-                AsyncImage(
-                    model = poster,
-                    contentDescription = title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
+                PosterArt(
+                    card = com.primebox.data.Card(title, url, poster, null, null, apiName),
+                    modifier = Modifier.fillMaxSize().sharedPoster(ctx, "poster-$url")
                 )
             } else {
                 ShimmerBox(Modifier.fillMaxSize(), corner = 0)

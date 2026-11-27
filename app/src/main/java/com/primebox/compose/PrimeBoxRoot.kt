@@ -1,32 +1,45 @@
+@file:OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
 package com.primebox.compose
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -38,9 +51,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.primebox.data.Card
@@ -49,7 +66,6 @@ import com.primebox.data.Store
 import com.primebox.data.Updater
 import com.primebox.ext.Languages
 import com.primebox.ext.Providers
-import java.io.File
 
 sealed interface Route {
     data object Home : Route
@@ -66,6 +82,8 @@ sealed interface Route {
         val headers: Map<String, String>
     ) : Route
 }
+
+private data class NavItem(val icon: ImageVector, val label: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,7 +105,7 @@ fun PrimeBoxRoot(
         stack.removeAt(stack.lastIndex)
     }
 
-    // silent update check, at most once per day and never on mobile data
+    // silent update check, at most once a day and never on mobile data
     LaunchedEffect(Unit) {
         if (Net.shouldSaveData(context)) return@LaunchedEffect
         val now = System.currentTimeMillis()
@@ -100,115 +118,138 @@ fun PrimeBoxRoot(
         updateInfo = info
     }
 
-    if (current is Route.Player) {
-        PlayerScreen(
-            url = current.url,
-            referer = current.referer,
-            title = current.title,
-            source = current.source,
-            headers = current.headers,
-            onBack = { stack.removeAt(stack.lastIndex) }
-        )
-        return
-    }
+    Box(Modifier.fillMaxSize()) {
+        SharedTransitionLayout {
+            AnimatedContent(
+                targetState = current,
+                label = "route",
+                transitionSpec = {
+                    when {
+                        // details rides up like a sheet, then drops away on back
+                        targetState is Route.Detail ->
+                            (slideInVertically(
+                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 380f),
+                                initialOffsetY = { it }
+                            ) + fadeIn(tween(120))) togetherWith fadeOut(tween(90))
 
-    Scaffold(
-        containerColor = Color.Transparent,
-        bottomBar = {
-            if (current is Route.Home || current is Route.Library) {
-                NavigationBar(containerColor = Cine.c.glassStrong) {
-                    NavigationBarItem(
-                        selected = current is Route.Home,
-                        onClick = {
-                            if (stack.size > 1) stack.removeRange(1, stack.size) else stack[0] = Route.Home
-                        },
-                        icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                        label = { Text("Home", fontSize = 11.sp) }
-                    )
-                    NavigationBarItem(
-                        selected = current is Route.Library,
-                        onClick = {
-                            if (stack.size > 1) stack.removeRange(1, stack.size)
-                            stack.add(Route.Library)
-                        },
-                        icon = { Icon(Icons.Filled.List, contentDescription = "Library") },
-                        label = { Text("Library", fontSize = 11.sp) }
-                    )
+                        initialState is Route.Detail ->
+                            fadeIn(tween(200)) togetherWith
+                                (slideOutVertically(tween(240), targetOffsetY = { it }) + fadeOut(tween(180)))
+
+                        else -> fadeIn(tween(220)) togetherWith fadeOut(tween(120))
+                    }
                 }
-            }
-        },
-        floatingActionButton = {
-            if (current is Route.Home) {
-                FloatingActionButton(
-                    onClick = { showSwitcher = true },
-                    containerColor = Cine.c.accent,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(Icons.Filled.Layers, contentDescription = "Source")
+            ) { r ->
+                val ctx = SharedCtx(this@SharedTransitionLayout, this)
+                Box(Modifier.fillMaxSize()) {
+                    when (r) {
+                        is Route.Home -> HomeScreen(
+                            refreshKey = refreshKey,
+                            randomTick = randomTick,
+                            ctx = ctx,
+                            onOpenDetail = { card ->
+                                stack.add(Route.Detail(card.url, card.name, card.poster, card.api))
+                            },
+                            onOpenSearch = { stack.add(Route.Search) },
+                            onOpenExtensions = { stack.add(Route.Extensions) },
+                            onOpenSettings = { stack.add(Route.Settings) },
+                            onOpenSwitcher = { showSwitcher = true }
+                        )
+
+                        is Route.Library -> LibraryScreen(
+                            onOpenDetail = { url, name, poster, api ->
+                                stack.add(Route.Detail(url, name, poster, api))
+                            },
+                            onPlayLocal = { file, title ->
+                                stack.add(Route.Player(file.absolutePath, null, title, "Downloaded", emptyMap()))
+                            }
+                        )
+
+                        is Route.Search -> SearchScreen(
+                            onOpenDetail = { card -> stack.add(Route.Detail(card.url, card.name, card.poster, card.api)) },
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+
+                        is Route.Extensions -> ExtensionsScreen(onBack = {
+                            refreshKey++
+                            stack.removeAt(stack.lastIndex)
+                        })
+
+                        is Route.Settings -> SettingsScreen(
+                            themeMode = themeMode,
+                            onThemeChange = { onThemeChange(it) },
+                            onShowUpdate = { updateInfo = it },
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+
+                        is Route.Detail -> DetailScreen(
+                            url = r.url,
+                            title = r.name,
+                            poster = r.poster,
+                            apiName = r.api,
+                            ctx = ctx,
+                            onBack = { stack.removeAt(stack.lastIndex) },
+                            onPlay = { link, title ->
+                                stack.add(
+                                    Route.Player(
+                                        url = link.url,
+                                        referer = link.referer,
+                                        title = title,
+                                        source = "${link.name}  •  ${link.quality}p",
+                                        headers = link.headers
+                                    )
+                                )
+                            }
+                        )
+
+                        is Route.Player -> PlayerScreen(
+                            url = r.url,
+                            referer = r.referer,
+                            title = r.title,
+                            source = r.source,
+                            headers = r.headers,
+                            onBack = { stack.removeAt(stack.lastIndex) }
+                        )
+                    }
                 }
             }
         }
-    ) { padding ->
-        Box(Modifier.padding(padding)) {
-            when (current) {
-                is Route.Home -> HomeScreen(
-                    refreshKey = refreshKey,
-                    randomTick = randomTick,
-                    onOpenDetail = { card ->
-                        stack.add(Route.Detail(card.url, card.name, card.poster, card.api))
-                    },
-                    onOpenSearch = { stack.add(Route.Search) },
-                    onOpenExtensions = { stack.add(Route.Extensions) },
-                    onOpenSettings = { stack.add(Route.Settings) },
-                    onOpenSwitcher = { showSwitcher = true }
-                )
 
-                is Route.Library -> LibraryScreen(
-                    onOpenDetail = { url, name, poster, api ->
-                        stack.add(Route.Detail(url, name, poster, api))
-                    },
-                    onPlayLocal = { file, title ->
-                        stack.add(Route.Player(file.absolutePath, null, title, "Downloaded", emptyMap()))
+        // floating glass nav bar (CineGlass "Floating" style)
+        if (current is Route.Home || current is Route.Library) {
+            FloatingNavBar(
+                selected = if (current is Route.Home) 0 else 1,
+                onSelect = { index ->
+                    if (index == 0) {
+                        if (stack.size > 1) stack.removeRange(1, stack.size) else stack[0] = Route.Home
+                    } else {
+                        if (stack.size > 1) stack.removeRange(1, stack.size)
+                        stack.add(Route.Library)
                     }
-                )
+                },
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
 
-                is Route.Search -> SearchScreen(
-                    onOpenDetail = { card -> stack.add(Route.Detail(card.url, card.name, card.poster, card.api)) },
-                    onBack = { stack.removeAt(stack.lastIndex) }
-                )
-
-                is Route.Extensions -> ExtensionsScreen(onBack = {
-                    refreshKey++
-                    stack.removeAt(stack.lastIndex)
-                })
-
-                is Route.Settings -> SettingsScreen(
-                    themeMode = themeMode,
-                    onThemeChange = { onThemeChange(it) },
-                    onShowUpdate = { updateInfo = it },
-                    onBack = { stack.removeAt(stack.lastIndex) }
-                )
-
-                is Route.Detail -> DetailScreen(
-                    url = current.url,
-                    title = current.name,
-                    poster = current.poster,
-                    apiName = current.api,
-                    onBack = { stack.removeAt(stack.lastIndex) },
-                    onPlay = { link, title ->
-                        stack.add(
-                            Route.Player(
-                                url = link.url,
-                                referer = link.referer,
-                                title = title,
-                                source = "${link.name}  •  ${link.quality}p",
-                                headers = link.headers
-                            )
-                        )
-                    }
-                )
-
-                is Route.Player -> Unit
+        // source switcher FAB
+        if (current is Route.Home) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 22.dp, bottom = 104.dp)
+            ) {
+                Box(
+                    Modifier
+                        .size(54.dp)
+                        .shadow(16.dp, CircleShape, ambientColor = Cine.c.accent, spotColor = Cine.c.accent)
+                        .clip(CircleShape)
+                        .background(Cine.c.accent)
+                        .clickable { showSwitcher = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Layers, contentDescription = "Source", tint = Color.White, modifier = Modifier.size(22.dp))
+                }
             }
         }
     }
@@ -217,7 +258,7 @@ fun PrimeBoxRoot(
         ModalBottomSheet(
             onDismissRequest = { showSwitcher = false },
             sheetState = switcherState,
-            containerColor = Cine.c.glassStrong
+            containerColor = Cine.c.sheet
         ) {
             ExtensionSwitcher(
                 onPick = {
@@ -237,6 +278,59 @@ fun PrimeBoxRoot(
     }
 }
 
+/** Floating glass pill nav bar with a sliding accent disc. */
+@Composable
+private fun FloatingNavBar(selected: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val c = Cine.c
+    val items = remember {
+        listOf(
+            NavItem(Icons.Filled.Home, "Home"),
+            NavItem(Icons.Filled.VideoLibrary, "Library")
+        )
+    }
+    Box(modifier.navigationBarsPadding().padding(horizontal = 44.dp, vertical = 14.dp)) {
+        BoxWithConstraints(
+            Modifier.fillMaxWidth().height(64.dp).glass(RoundedCornerShape(32.dp), strong = true)
+        ) {
+            val tabW = maxWidth / items.size
+            val x by animateDpAsState(
+                targetValue = tabW * selected + (tabW - 46.dp) / 2,
+                animationSpec = spring(dampingRatio = 0.7f, stiffness = 380f),
+                label = "pill"
+            )
+            Box(
+                Modifier
+                    .offset { IntOffset(x.roundToPx(), 9.dp.roundToPx()) }
+                    .size(46.dp)
+                    .shadow(14.dp, CircleShape, ambientColor = c.accent, spotColor = c.accent)
+                    .clip(CircleShape)
+                    .background(c.accent)
+            )
+            Row(Modifier.fillMaxSize()) {
+                items.forEachIndexed { i, item ->
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { onSelect(i) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            item.icon,
+                            contentDescription = item.label,
+                            tint = if (selected == i) Color.White else c.textMuted,
+                            modifier = Modifier.size(23.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
     val providers = remember { Providers.all() }
@@ -245,15 +339,15 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
     val active = Store.activeProvider
 
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text("Choose extension", style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
+        Text("Choose extension", color = Cine.c.text, fontWeight = FontWeight.Bold, fontSize = 20.sp)
         Text(
             "The home screen is built from the selected source",
-            fontSize = 12.sp,
             color = Cine.c.textMuted,
+            fontSize = 12.sp,
             modifier = Modifier.padding(top = 4.dp)
         )
         Spacer(Modifier.height(12.dp))
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             placeholder = { Text("Search extensions", fontSize = 12.sp) },
@@ -265,46 +359,42 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
         if (filtered.isEmpty()) {
             Text(
                 "No extension found. Open Extensions to add a repository or import a .cs3 file.",
-                fontSize = 12.5.sp,
-                color = Cine.c.textMuted
+                color = Cine.c.textMuted,
+                fontSize = 12.5.sp
             )
         }
 
         filtered.take(20).forEach { api ->
-            Surface(
-                color = if (api.name == active) Cine.c.glassStrong else Cine.c.glass,
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier
+            Row(
+                Modifier
                     .fillMaxWidth()
                     .padding(bottom = 8.dp)
-                    .androidxClickable {
+                    .then(
+                        if (api.name == active) Modifier.clip(RoundedCornerShape(16.dp)).background(Cine.c.accent.copy(alpha = 0.18f))
+                        else Modifier.glass(RoundedCornerShape(16.dp))
+                    )
+                    .clickable {
                         Providers.select(api)
                         onPick()
                     }
+                    .padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(api.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
-                        Text(
-                            api.mainUrl.removePrefix("https://").removePrefix("http://"),
-                            fontSize = 10.5.sp,
-                            color = Cine.c.textMuted,
-                            maxLines = 1
-                        )
-                    }
-                    Badge(Languages.chip(api.lang), Cine.c.accent, Cine.c.glassStrong)
+                Column(Modifier.weight(1f)) {
+                    Text(api.name, color = Cine.c.text, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Text(
+                        api.mainUrl.removePrefix("https://").removePrefix("http://"),
+                        color = Cine.c.textMuted,
+                        fontSize = 10.5.sp,
+                        maxLines = 1
+                    )
                 }
+                GlassChip("${Languages.flag(api.lang)}  ${Languages.name(api.lang)}")
             }
         }
 
         Spacer(Modifier.height(6.dp))
-        androidx.compose.material3.Button(
-            onClick = onManage,
-            modifier = Modifier.fillMaxWidth()
-        ) { Text("Manage extensions") }
+        GlowButton("Manage extensions", onClick = onManage, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(18.dp))
     }
 }
-
-private fun Modifier.androidxClickable(onClick: () -> Unit): Modifier =
-    this.clickable(onClick = onClick)

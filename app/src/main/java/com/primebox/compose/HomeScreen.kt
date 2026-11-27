@@ -81,6 +81,7 @@ private const val CACHE_TTL_MS = 30L * 60L * 1000L
 fun HomeScreen(
     refreshKey: Int,
     randomTick: Int,
+    ctx: SharedCtx? = null,
     onOpenDetail: (Card) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenExtensions: () -> Unit,
@@ -194,7 +195,7 @@ fun HomeScreen(
             }
 
             if (heroItems.isNotEmpty()) {
-                item { HeroCarousel(heroItems, onOpenDetail) }
+                item { HeroCarousel(heroItems, ctx, onOpenDetail) }
             }
 
             item {
@@ -275,7 +276,7 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             items(continueWatching) { card ->
-                                EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.api)
+                                EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.api, ctx = ctx)
                             }
                         }
                     }
@@ -290,9 +291,9 @@ fun HomeScreen(
                         ) {
                             items(row.items) { card ->
                                 if (row.horizontal) {
-                                    EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.type)
+                                    EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.type, ctx = ctx)
                                 } else {
-                                    MovieCard(card, onClick = { onOpenDetail(card) })
+                                    MovieCard(card, onClick = { onOpenDetail(card) }, ctx = ctx)
                                 }
                             }
                         }
@@ -341,7 +342,7 @@ private fun HomeTopBar(onOpenSearch: () -> Unit, onOpenExtensions: () -> Unit, o
 
 /** Screen-wide hero card: art edge to edge, dissolving into the page background. */
 @Composable
-private fun HeroCarousel(items: List<Card>, onOpenDetail: (Card) -> Unit) {
+private fun HeroCarousel(items: List<Card>, ctx: SharedCtx?, onOpenDetail: (Card) -> Unit) {
     val state = rememberPagerState(pageCount = { items.size })
 
     LaunchedEffect(items.size) {
@@ -373,7 +374,7 @@ private fun HeroCarousel(items: List<Card>, onOpenDetail: (Card) -> Unit) {
                     .clip(RoundedCornerShape(26.dp))
                     .clickable { onOpenDetail(card) }
             ) {
-                PosterArt(card, Modifier.fillMaxSize())
+                PosterArt(card, Modifier.fillMaxSize(), ctx = ctx)
                 // artwork dissolving into the page background
                 Box(
                     Modifier.fillMaxSize().background(

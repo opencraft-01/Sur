@@ -11,8 +11,8 @@ android {
         applicationId = "com.primebox.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 18
-        versionName = "4.0.0"
+        versionCode = 19
+        versionName = "4.1.0"
         resourceConfigurations += listOf("en")
 
         ndk {
