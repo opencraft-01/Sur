@@ -30,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -56,7 +57,7 @@ fun SettingsScreen(
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Color.Transparent),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
     ) {
         item {
@@ -64,10 +65,10 @@ fun SettingsScreen(
                 androidx.compose.material3.Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground,
+                    tint = Cine.c.text,
                     modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
                 )
-                Text("Settings", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onBackground)
+                Text("Settings", style = MaterialTheme.typography.displayMedium, color = Cine.c.text)
             }
         }
 
@@ -77,7 +78,7 @@ fun SettingsScreen(
                 listOf("System" to 0, "Light" to 1, "Dark" to 2).forEach { (label, value) ->
                     val selected = themeMode == value
                     Surface(
-                        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        color = if (selected) Cine.c.glassStrong else Cine.c.glassStrong,
                         shape = RoundedCornerShape(16.dp),
                         modifier = Modifier.weight(1f).clickable { onThemeChange(value) }
                     ) {
@@ -85,7 +86,7 @@ fun SettingsScreen(
                             label,
                             fontSize = 13.sp,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = Cine.c.text,
                             modifier = Modifier.padding(vertical = 16.dp),
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
@@ -97,7 +98,7 @@ fun SettingsScreen(
         item {
             SectionHeader("Playback")
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Autoplay next episode", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text("Autoplay next episode", fontSize = 14.sp, color = Cine.c.text, modifier = Modifier.weight(1f))
                 Switch(checked = autoplay, onCheckedChange = { autoplay = it; Store.autoplayNext = it })
             }
         }
@@ -105,7 +106,7 @@ fun SettingsScreen(
         item {
             SectionHeader("Data")
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Data saver (skip prefetch on mobile data)", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                Text("Data saver (skip prefetch on mobile data)", fontSize = 14.sp, color = Cine.c.text, modifier = Modifier.weight(1f))
                 Switch(checked = dataSaver, onCheckedChange = { dataSaver = it; Store.dataSaver = it })
             }
             Spacer(Modifier.height(10.dp))
@@ -131,7 +132,7 @@ fun SettingsScreen(
             Text(
                 "Installed: ${Updater.currentName()} (build ${Updater.currentCode()})",
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Cine.c.textMuted
             )
             Spacer(Modifier.height(10.dp))
             Button(onClick = {
@@ -149,7 +150,7 @@ fun SettingsScreen(
                 }
             }) { Text("Check for updates") }
             if (updateStatus.isNotBlank()) {
-                Text(updateStatus, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                Text(updateStatus, fontSize = 11.sp, color = Cine.c.textMuted, modifier = Modifier.padding(top = 8.dp))
             }
         }
 
@@ -158,7 +159,7 @@ fun SettingsScreen(
             Text(
                 "PrimeBox ${BuildConfig.VERSION_NAME}\nExtension-driven media centre. Extensions are third-party code — install only repositories you trust.",
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Cine.c.textMuted
             )
             Spacer(Modifier.height(30.dp))
         }

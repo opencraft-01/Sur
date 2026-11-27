@@ -143,14 +143,14 @@ fun DetailScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Transparent)
             .verticalScroll(rememberScrollState())
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .height(230.dp)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(Cine.c.glass)
         ) {
             if (!poster.isNullOrBlank()) {
                 AsyncImage(
@@ -183,10 +183,10 @@ fun DetailScreen(
             Text(
                 title,
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Cine.c.text,
                 modifier = Modifier.padding(top = 12.dp)
             )
-            Text(status, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            Text(status, fontSize = 11.sp, color = Cine.c.textMuted, modifier = Modifier.padding(top = 4.dp))
 
             val loaded = response
             if (loaded != null) {
@@ -201,7 +201,7 @@ fun DetailScreen(
                     Text(
                         it,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Cine.c.textMuted,
                         modifier = Modifier.padding(top = 12.dp)
                     )
                 }
@@ -245,7 +245,7 @@ fun DetailScreen(
                 Text(
                     "Finding sources…",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cine.c.textMuted,
                     modifier = Modifier.padding(top = 14.dp)
                 )
             }
@@ -254,7 +254,7 @@ fun DetailScreen(
                 SectionHeader("Sources", "${links.size}")
                 links.forEach { link ->
                     Surface(
-                        color = MaterialTheme.colorScheme.surface,
+                        color = Cine.c.glassStrong,
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier
                             .fillMaxWidth()
@@ -265,17 +265,17 @@ fun DetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(link.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+                                Text(link.name, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = Cine.c.text)
                                 Text(
                                     "${link.type.name}   •   ${link.quality}p",
                                     fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Cine.c.textMuted
                                 )
                             }
                             androidx.compose.material3.Icon(
                                 Icons.Filled.Download,
                                 contentDescription = "Download",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = Cine.c.textMuted,
                                 modifier = Modifier.clickable {
                                     download(context, link, title, poster)
                                 }.padding(8.dp).size(20.dp)
@@ -283,7 +283,7 @@ fun DetailScreen(
                             androidx.compose.material3.Icon(
                                 Icons.Filled.PlayArrow,
                                 contentDescription = "Play",
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = Cine.c.accent,
                                 modifier = Modifier.clickable {
                                     Store.addHistory(
                                         Store.HistoryEntry(
@@ -317,7 +317,7 @@ private fun EpisodeList(
     episodes.take(300).forEachIndexed { index, episode ->
         val label = episode.name?.takeIf { it.isNotBlank() } ?: "Episode ${episode.episode ?: (index + 1)}"
         Surface(
-            color = MaterialTheme.colorScheme.surface,
+            color = Cine.c.glassStrong,
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -325,10 +325,10 @@ private fun EpisodeList(
                 .clickable { onEpisode(episode, "$title — $label") }
         ) {
             Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(50)) {
+                Surface(color = Cine.c.glassStrong, shape = RoundedCornerShape(50)) {
                     Text(
                         "${episode.episode ?: (index + 1)}",
-                        color = MaterialTheme.colorScheme.primary,
+                        color = Cine.c.accent,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
@@ -336,9 +336,9 @@ private fun EpisodeList(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                    Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
                     episode.runTime?.let {
-                        Text("$it min", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("$it min", fontSize = 11.sp, color = Cine.c.textMuted)
                     }
                 }
             }

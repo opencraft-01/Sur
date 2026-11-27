@@ -66,18 +66,18 @@ fun LibraryScreen(
     Column(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color.Transparent)
     ) {
         Text(
             "Library",
             style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = Cine.c.text,
             modifier = Modifier.padding(start = 20.dp, top = 18.dp)
         )
         Text(
             "Your downloads and watch history",
             fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Cine.c.textMuted,
             modifier = Modifier.padding(start = 20.dp, top = 4.dp)
         )
 
@@ -135,13 +135,13 @@ fun LibraryScreen(
 @Composable
 private fun StatCard(title: String, value: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     Surface(
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        color = if (selected) Cine.c.glassStrong else Cine.c.glassStrong,
         shape = RoundedCornerShape(20.dp),
         modifier = modifier.clickable { onClick() }
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(title.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(title.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Cine.c.textMuted)
+            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Cine.c.text)
         }
     }
 }
@@ -149,7 +149,7 @@ private fun StatCard(title: String, value: String, selected: Boolean, modifier: 
 @Composable
 private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = Cine.c.glassStrong,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { onPlay() }
     ) {
@@ -158,7 +158,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                 Modifier
                     .size(52.dp, 74.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .background(Cine.c.glass)
             ) {
                 if (!item.poster.isNullOrBlank()) {
                     AsyncImage(
@@ -175,7 +175,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                     item.title,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Cine.c.text,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -190,7 +190,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                         else -> "Queued"
                     },
                     fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Cine.c.textMuted
                 )
                 if (running) {
                     val unknown = item.indeterminate || item.totalBytes <= 0
@@ -208,7 +208,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                             append(if (item.speed > 0) bytesLabel(item.speed) + "/s" else "—")
                         },
                         fontSize = 10.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = Cine.c.textMuted,
                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
                     )
                 }
@@ -216,7 +216,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
             androidx.compose.material3.Icon(
                 Icons.Filled.Delete,
                 contentDescription = "Delete download",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = Cine.c.textMuted,
                 modifier = Modifier.clickable { onDelete() }.padding(8.dp).size(20.dp)
             )
         }
@@ -226,7 +226,7 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
 @Composable
 private fun HistoryRow(entry: Store.HistoryEntry, onClick: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = Cine.c.glassStrong,
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { onClick() }
     ) {
@@ -235,7 +235,7 @@ private fun HistoryRow(entry: Store.HistoryEntry, onClick: () -> Unit) {
                 Modifier
                     .size(52.dp, 74.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .background(Cine.c.glass)
             ) {
                 if (!entry.poster.isNullOrBlank()) {
                     AsyncImage(
@@ -252,11 +252,11 @@ private fun HistoryRow(entry: Store.HistoryEntry, onClick: () -> Unit) {
                     entry.title,
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Cine.c.text,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(entry.provider, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(entry.provider, fontSize = 11.sp, color = Cine.c.textMuted)
             }
         }
     }

@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,7 +94,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Color.Transparent),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
     ) {
         item {
@@ -101,15 +102,15 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                 androidx.compose.material3.Icon(
                     Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onBackground,
+                    tint = Cine.c.text,
                     modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
                 )
-                Text("Extensions", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onBackground)
+                Text("Extensions", style = MaterialTheme.typography.displayMedium, color = Cine.c.text)
             }
             Text(
                 "Add a repository, or import a .cs3 file directly",
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Cine.c.textMuted,
                 modifier = Modifier.padding(top = 4.dp)
             )
             Spacer(Modifier.height(14.dp))
@@ -136,12 +137,12 @@ fun ExtensionsScreen(onBack: () -> Unit) {
         item {
             SectionHeader("Active source")
             if (providers.isEmpty()) {
-                Text("No extension loaded", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("No extension loaded", fontSize = 12.5.sp, color = Cine.c.textMuted)
             }
             providers.forEach { api ->
                 val active = Store.activeProvider == api.name
                 Surface(
-                    color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                    color = if (active) Cine.c.glassStrong else Cine.c.glassStrong,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -156,13 +157,13 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                             api.name,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurface,
+                            color = Cine.c.text,
                             modifier = Modifier.weight(1f)
                         )
-                        Badge(Languages.chip(api.lang), MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer)
+                        Badge(Languages.chip(api.lang), Cine.c.accent, Cine.c.glassStrong)
                         if (active) {
                             Spacer(Modifier.padding(horizontal = 4.dp))
-                            Badge("ACTIVE", MaterialTheme.colorScheme.onPrimary, MaterialTheme.colorScheme.primary)
+                            Badge("ACTIVE", MaterialTheme.colorScheme.onPrimary, Cine.c.accent)
                         }
                     }
                 }
@@ -172,27 +173,27 @@ fun ExtensionsScreen(onBack: () -> Unit) {
         item {
             SectionHeader("Installed")
             if (installed.isEmpty()) {
-                Text("Nothing installed yet", fontSize = 12.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Nothing installed yet", fontSize = 12.5.sp, color = Cine.c.textMuted)
             }
             installed.forEach { item ->
                 Surface(
-                    color = MaterialTheme.colorScheme.surface,
+                    color = Cine.c.glassStrong,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                            Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
                             Text(
                                 "${if (item.isLocal) "local file" else "downloaded"}  •  v${if (item.version == Int.MIN_VALUE) "?" else item.version}  •  ${item.providers.size} providers",
                                 fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Cine.c.textMuted
                             )
                         }
                         androidx.compose.material3.Icon(
                             Icons.Filled.Delete,
                             contentDescription = "Remove",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Cine.c.textMuted,
                             modifier = Modifier.clickable {
                                 ExtensionManager.unload(context, item)
                                 refresh()
@@ -207,14 +208,14 @@ fun ExtensionsScreen(onBack: () -> Unit) {
             SectionHeader("Repositories")
             ExtensionManager.PRESETS.forEach { preset ->
                 Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = Cine.c.glassStrong,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text(preset.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
-                            Text("One tap add", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(preset.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
+                            Text("One tap add", fontSize = 10.5.sp, color = Cine.c.textMuted)
                         }
                         Button(onClick = {
                             Store.addRepository(preset.url)
@@ -247,7 +248,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
 
         items(repos) { repoUrl ->
             Surface(
-                color = MaterialTheme.colorScheme.surface,
+                color = Cine.c.glassStrong,
                 shape = RoundedCornerShape(18.dp),
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
             ) {
@@ -256,7 +257,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                         Text(
                             repoUrl,
                             fontSize = 11.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Cine.c.textMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
@@ -264,13 +265,13 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                         androidx.compose.material3.Icon(
                             Icons.Filled.Refresh,
                             contentDescription = "Reload repository",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Cine.c.textMuted,
                             modifier = Modifier.clickable { loadRepo(repoUrl) }.padding(8.dp).size(18.dp)
                         )
                         androidx.compose.material3.Icon(
                             Icons.Filled.Close,
                             contentDescription = "Remove repository",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Cine.c.textMuted,
                             modifier = Modifier.clickable {
                                 Store.removeRepository(repoUrl)
                                 refresh()
@@ -278,12 +279,12 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                         )
                     }
                     repoState[repoUrl]?.let {
-                        Text(it, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(it, fontSize = 11.sp, color = Cine.c.textMuted)
                     }
                     repoPlugins[repoUrl]?.forEach { plugin ->
                         Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Column(Modifier.weight(1f)) {
-                                Text(plugin.name, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                                Text(plugin.name, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
                                 Text(
                                     buildString {
                                         append("v${plugin.version}")
@@ -291,7 +292,7 @@ fun ExtensionsScreen(onBack: () -> Unit) {
                                         if (plugin.language != null) append("  •  ${plugin.language}")
                                     },
                                     fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = Cine.c.textMuted,
                                     maxLines = 1
                                 )
                             }

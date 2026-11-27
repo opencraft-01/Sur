@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.primebox.compose.AppBackground
 import com.primebox.compose.PrimeBoxRoot
 import com.primebox.compose.PrimeBoxTheme
 import com.primebox.data.Store
@@ -30,13 +31,15 @@ class MainActivity : ComponentActivity() {
                 else -> isSystemInDarkTheme()
             }
             PrimeBoxTheme(darkTheme = dark) {
-                PrimeBoxRoot(
-                    themeMode = themeMode,
-                    onThemeChange = {
-                        Store.themeMode = it
-                        themeMode = it
-                    }
-                )
+                AppBackground {
+                    PrimeBoxRoot(
+                        themeMode = themeMode,
+                        onThemeChange = {
+                            Store.themeMode = it
+                            themeMode = it
+                        }
+                    )
+                }
             }
         }
     }

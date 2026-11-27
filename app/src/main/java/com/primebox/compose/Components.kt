@@ -59,8 +59,8 @@ fun ShimmerBox(modifier: Modifier = Modifier, corner: Int = 16) {
         ),
         label = "shimmerProgress"
     )
-    val base = MaterialTheme.colorScheme.surfaceContainerHigh
-    val highlight = MaterialTheme.colorScheme.surfaceVariant
+    val base = Cine.c.glass
+    val highlight = Cine.c.glass
     Box(
         modifier
             .clip(RoundedCornerShape(corner.dp))
@@ -89,7 +89,7 @@ fun PosterCard(
                 .width(width.dp)
                 .height(height.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .background(Cine.c.glass)
                 .clickable { onClick() }
         ) {
             if (card.poster.isNullOrBlank()) {
@@ -141,7 +141,7 @@ fun PosterCard(
             if (progress != null) {
                 androidx.compose.material3.LinearProgressIndicator(
                     progress = { progress.coerceIn(0f, 1f) },
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Cine.c.accent,
                     trackColor = Color.White.copy(alpha = 0.25f),
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -161,8 +161,8 @@ fun PillChip(
     onClick: () -> Unit
 ) {
     Surface(
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (selected) Cine.c.accent else Cine.c.glass,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Cine.c.textMuted,
         shape = RoundedCornerShape(50),
         modifier = Modifier.clickable { onClick() }
     ) {
@@ -184,8 +184,8 @@ fun IconChip(
     onClick: () -> Unit
 ) {
     Surface(
-        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+        color = if (selected) Cine.c.accent else Cine.c.glass,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Cine.c.textMuted,
         shape = RoundedCornerShape(50),
         modifier = Modifier.clickable { onClick() }
     ) {
@@ -208,8 +208,8 @@ fun IconChip(
 @Composable
 fun Badge(
     text: String,
-    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-    background: Color = MaterialTheme.colorScheme.surfaceContainerHigh
+    color: Color = Cine.c.textMuted,
+    background: Color = Cine.c.glass
 ) {
     Surface(color = background, shape = RoundedCornerShape(8.dp)) {
         Text(
@@ -235,7 +235,7 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
         Text(
             title,
             style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
+            color = Cine.c.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).padding(horizontal = 5.dp)
@@ -244,7 +244,7 @@ fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)?
             androidx.compose.material3.Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "See all",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = Cine.c.textMuted,
                 modifier = Modifier.padding(start = 6.dp).size(24.dp)
             )
         }
@@ -266,11 +266,11 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = Cine.c.textMuted
         )
         if (actionLabel != null && onAction != null) {
             androidx.compose.material3.Button(onClick = onAction) {
@@ -315,9 +315,9 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: 
         label = "sweep"
     )
 
-    val track = MaterialTheme.colorScheme.surfaceContainerHigh
-    val accent = MaterialTheme.colorScheme.primary
-    val accentSoft = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+    val track = Cine.c.glass
+    val accent = Cine.c.accent
+    val accentSoft = Cine.c.accent.copy(alpha = 0.45f)
 
     androidx.compose.foundation.Canvas(modifier = modifier.height(20.dp).fillMaxWidth()) {
         val stroke = 4.5.dp.toPx()

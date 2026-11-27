@@ -113,10 +113,10 @@ fun PrimeBoxRoot(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         bottomBar = {
             if (current is Route.Home || current is Route.Library) {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                NavigationBar(containerColor = Cine.c.glassStrong) {
                     NavigationBarItem(
                         selected = current is Route.Home,
                         onClick = {
@@ -141,7 +141,7 @@ fun PrimeBoxRoot(
             if (current is Route.Home) {
                 FloatingActionButton(
                     onClick = { showSwitcher = true },
-                    containerColor = MaterialTheme.colorScheme.primary,
+                    containerColor = Cine.c.accent,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
                     Icon(Icons.Filled.Layers, contentDescription = "Source")
@@ -217,7 +217,7 @@ fun PrimeBoxRoot(
         ModalBottomSheet(
             onDismissRequest = { showSwitcher = false },
             sheetState = switcherState,
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Cine.c.glassStrong
         ) {
             ExtensionSwitcher(
                 onPick = {
@@ -245,11 +245,11 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
     val active = Store.activeProvider
 
     Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
-        Text("Choose extension", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+        Text("Choose extension", style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
         Text(
             "The home screen is built from the selected source",
             fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Cine.c.textMuted,
             modifier = Modifier.padding(top = 4.dp)
         )
         Spacer(Modifier.height(12.dp))
@@ -266,13 +266,13 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
             Text(
                 "No extension found. Open Extensions to add a repository or import a .cs3 file.",
                 fontSize = 12.5.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = Cine.c.textMuted
             )
         }
 
         filtered.take(20).forEach { api ->
             Surface(
-                color = if (api.name == active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                color = if (api.name == active) Cine.c.glassStrong else Cine.c.glass,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -284,15 +284,15 @@ private fun ExtensionSwitcher(onPick: () -> Unit, onManage: () -> Unit) {
             ) {
                 Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text(api.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        Text(api.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
                         Text(
                             api.mainUrl.removePrefix("https://").removePrefix("http://"),
                             fontSize = 10.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = Cine.c.textMuted,
                             maxLines = 1
                         )
                     }
-                    Badge(Languages.chip(api.lang), MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primaryContainer)
+                    Badge(Languages.chip(api.lang), Cine.c.accent, Cine.c.glassStrong)
                 }
             }
         }

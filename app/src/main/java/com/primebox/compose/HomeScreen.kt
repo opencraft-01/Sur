@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -20,23 +22,23 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,13 +50,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
@@ -67,12 +68,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlin.math.absoluteValue
 
 private const val CACHE_TTL_MS = 30L * 60L * 1000L
 
 /**
- * CloudStream-style home: search bar on top, hero carousel, type chips, then rows
- * of 114x180 cards with the title inside the card.
+ * CineGlass home: one screen-wide hero card per page (art dissolving into the
+ * background), glass chips, then rows of poster tiles.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -94,9 +96,7 @@ fun HomeScreen(
     var reload by remember { mutableStateOf(0) }
     var sheetRow by remember { mutableStateOf<HomeCache.Row?>(null) }
 
-    LaunchedEffect(refreshKey) {
-        provider = Providers.active()
-    }
+    LaunchedEffect(refreshKey) { provider = Providers.active() }
 
     LaunchedEffect(provider?.name, reload) {
         val api = provider ?: return@LaunchedEffect
@@ -132,7 +132,6 @@ fun HomeScreen(
         HomeCache.save(context, api.name, loaded)
     }
 
-    val api = provider
     val visibleRows = remember(rows, selectedType) {
         val type = selectedType
         if (type == null) rows else rows.mapNotNull { row ->
@@ -142,154 +141,160 @@ fun HomeScreen(
     }
     val heroItems = visibleRows.firstOrNull()?.items?.take(5).orEmpty()
 
-    // CloudStream's Random button: open a random title from the loaded rows
     LaunchedEffect(randomTick) {
         if (randomTick <= 0) return@LaunchedEffect
         val pool = visibleRows.flatMap { it.items }
         if (pool.isNotEmpty()) onOpenDetail(pool.random())
     }
+
     val continueWatching = remember(refreshKey) {
         com.primebox.data.Store.history().take(12).map {
             Card(it.title, it.url, it.poster, null, null, it.provider)
         }
     }
 
-    // "See all" popup: same idea as CloudStream's row "more info" bottom sheet
     sheetRow?.let { row ->
         ModalBottomSheet(
             onDismissRequest = { sheetRow = null },
             sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = Cine.c.sheet
         ) {
             Column(Modifier.padding(horizontal = 16.dp)) {
-                Text(
-                    row.name,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Text(
-                    "${row.items.size} titles",
-                    fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text(row.name, color = Cine.c.text, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text("${row.items.size} titles", color = Cine.c.textMuted, fontSize = 11.5.sp)
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
+                    contentPadding = PaddingValues(top = 14.dp, bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp)
                 ) {
                     gridItems(row.items) { card ->
-                        PosterCard(card, width = 104, height = 150) {
-                            sheetRow = null
-                            onOpenDetail(card)
-                        }
+                        MovieCard(
+                            card = card,
+                            onClick = {
+                                sheetRow = null
+                                onOpenDetail(card)
+                            },
+                            width = 104.dp,
+                            height = 156.dp
+                        )
                     }
                 }
             }
         }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentPadding = PaddingValues(bottom = 96.dp)
-    ) {
-        item {
-            TopBar(
-                providerName = api?.name,
-                providerLang = api?.lang,
-                onOpenSearch = onOpenSearch,
-                onOpenExtensions = onOpenExtensions,
-                onOpenSettings = onOpenSettings
-            )
-        }
-
-        if (heroItems.isNotEmpty()) {
-            item { HeroCarousel(heroItems, onOpenDetail) }
-        }
-
-        item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                PillChip(
-                    text = if (api == null) "No extension" else "${Languages.flag(api.lang)}  ${api.name}",
-                    onClick = onOpenSwitcher
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = Languages.name(api?.lang).uppercase(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+    AppBackground {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 110.dp)
+        ) {
+            item {
+                HomeTopBar(onOpenSearch, onOpenExtensions, onOpenSettings)
             }
-        }
 
-        item {
-            TypeChips(
-                api = api,
-                rows = rows,
-                selected = selectedType,
-                onSelect = { selectedType = it },
-                onRandom = {
-                    val pool = visibleRows.flatMap { it.items }
-                    if (pool.isNotEmpty()) onOpenDetail(pool.random())
+            if (heroItems.isNotEmpty()) {
+                item { HeroCarousel(heroItems, onOpenDetail) }
+            }
+
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GlassChip(
+                        text = if (provider == null) "No extension" else "${Languages.flag(provider?.lang)}  ${provider?.name}",
+                        onClick = onOpenSwitcher
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        Languages.name(provider?.lang).uppercase(),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Cine.c.textMuted
+                    )
                 }
-            )
-        }
-
-        if (loading && rows.isEmpty()) {
-            items(3) { RowSkeleton() }
-        } else if (error != null && rows.isEmpty()) {
-            item {
-                EmptyState(
-                    title = "Could not load",
-                    body = error ?: "Unknown error",
-                    actionLabel = "Retry"
-                ) { reload++ }
             }
-        } else if (visibleRows.isEmpty()) {
+
             item {
-                EmptyState(
-                    title = "Nothing here yet",
-                    body = "Add an extension repository or import a .cs3 file, then pick a source with the button below.",
-                    actionLabel = "Open extensions",
-                    onAction = onOpenExtensions
+                TypeChips(
+                    api = provider,
+                    rows = rows,
+                    selected = selectedType,
+                    onSelect = { selectedType = it },
+                    onRandom = {
+                        val pool = visibleRows.flatMap { it.items }
+                        if (pool.isNotEmpty()) onOpenDetail(pool.random())
+                    }
                 )
             }
-        } else {
-            if (continueWatching.isNotEmpty()) {
-                item(key = "continue") {
-                    SectionHeader("Continue watching")
-                    LazyRow(
-                        contentPadding = PaddingValues(start = 15.dp, end = 5.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(continueWatching) { card ->
-                            PosterCard(card = card, width = 114, height = 180) { onOpenDetail(card) }
+
+            if (loading && rows.isEmpty()) {
+                item {
+                    Row(Modifier.padding(start = 20.dp, top = 18.dp)) {
+                        repeat(3) {
+                            MovieCardSkeleton()
+                            Spacer(Modifier.width(10.dp))
                         }
                     }
                 }
-            }
-            visibleRows.forEach { row ->
-                item(key = row.name) {
-                    SectionHeader(row.name, "›") { sheetRow = row }
-                    LazyRow(
-                        contentPadding = PaddingValues(start = 15.dp, end = 5.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(row.items) { card ->
-                            PosterCard(
-                                card = card,
-                                width = if (row.horizontal) 200 else 114,
-                                height = if (row.horizontal) 114 else 180
-                            ) { onOpenDetail(card) }
+            } else if (error != null && rows.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(Modifier.glass(RoundedCornerShape(22.dp)).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Could not load", color = Cine.c.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text(error ?: "", color = Cine.c.textMuted, fontSize = 12.sp)
+                            Spacer(Modifier.height(14.dp))
+                            GlowButton("Retry") { reload++ }
+                        }
+                    }
+                }
+            } else if (visibleRows.isEmpty()) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(Modifier.glass(RoundedCornerShape(22.dp)).padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Nothing here yet", color = Cine.c.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Add a repository or import a .cs3 file, then pick a source.",
+                                color = Cine.c.textMuted,
+                                fontSize = 12.sp
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            GlowButton("Open extensions") { onOpenExtensions() }
+                        }
+                    }
+                }
+            } else {
+                if (continueWatching.isNotEmpty()) {
+                    item(key = "continue") {
+                        CineSectionHeader("Continue watching")
+                        LazyRow(
+                            contentPadding = PaddingValues(start = 20.dp, end = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(continueWatching) { card ->
+                                EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.api)
+                            }
+                        }
+                    }
+                }
+
+                visibleRows.forEach { row ->
+                    item(key = row.name) {
+                        CineSectionHeader(row.name, onSeeAll = { sheetRow = row })
+                        LazyRow(
+                            contentPadding = PaddingValues(start = 20.dp, end = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(row.items) { card ->
+                                if (row.horizontal) {
+                                    EpisodeCard(card, onClick = { onOpenDetail(card) }, subtitle = card.type)
+                                } else {
+                                    MovieCard(card, onClick = { onOpenDetail(card) })
+                                }
+                            }
                         }
                     }
                 }
@@ -299,70 +304,42 @@ fun HomeScreen(
 }
 
 @Composable
-private fun TopBar(
-    providerName: String?,
-    providerLang: String?,
-    onOpenSearch: () -> Unit,
-    onOpenExtensions: () -> Unit,
-    onOpenSettings: () -> Unit
-) {
-    Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+private fun HomeTopBar(onOpenSearch: () -> Unit, onOpenExtensions: () -> Unit, onOpenSettings: () -> Unit) {
+    Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 10.dp)) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 "PrimeBox",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
+                color = Cine.c.text,
+                fontWeight = FontWeight.Black,
+                fontSize = 26.sp,
+                style = glowText(Cine.c.accent.copy(alpha = 0.55f)),
                 modifier = Modifier.weight(1f)
             )
-            androidx.compose.material3.Icon(
-                Icons.Filled.Settings,
-                contentDescription = "Settings",
-                tint = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.clickable { onOpenSettings() }.padding(8.dp).size(20.dp)
-            )
-            androidx.compose.material3.Icon(
-                Icons.Filled.Layers,
-                contentDescription = "Extensions",
-                tint = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.clickable { onOpenExtensions() }.padding(8.dp).size(20.dp)
-            )
+            GlassIconButton(Icons.Filled.Settings, onOpenSettings, size = 38.dp)
+            Spacer(Modifier.width(8.dp))
+            GlassIconButton(Icons.Filled.Layers, onOpenExtensions, size = 38.dp)
         }
-        Spacer(Modifier.height(10.dp))
-        Surface(
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(50),
+        Spacer(Modifier.height(12.dp))
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
+                .glass(RoundedCornerShape(50))
                 .clickable { onOpenSearch() }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    Icons.Filled.Search,
-                    contentDescription = "Search",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Search movies, series, anime…",
-                    fontSize = 13.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            Icon(Icons.Filled.Search, null, tint = Cine.c.textMuted, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(10.dp))
+            Text("Search movies, series, anime…", color = Cine.c.textMuted, fontSize = 13.sp)
         }
     }
 }
 
-/** Google-TV style ranked carousel that auto-scrolls right to left. */
+/** Screen-wide hero card: art edge to edge, dissolving into the page background. */
 @Composable
 private fun HeroCarousel(items: List<Card>, onOpenDetail: (Card) -> Unit) {
     val state = rememberPagerState(pageCount = { items.size })
@@ -370,83 +347,86 @@ private fun HeroCarousel(items: List<Card>, onOpenDetail: (Card) -> Unit) {
     LaunchedEffect(items.size) {
         if (items.size <= 1) return@LaunchedEffect
         while (true) {
-            delay(5000)
-            val next = (state.currentPage + 1) % items.size
-            state.animateScrollToPage(next)
+            delay(5200)
+            state.animateScrollToPage((state.currentPage + 1) % items.size)
         }
     }
 
     Column(Modifier.fillMaxWidth()) {
         HorizontalPager(
             state = state,
-            contentPadding = PaddingValues(horizontal = 14.dp),
-            pageSpacing = 10.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(300.dp)
+            contentPadding = PaddingValues(horizontal = 22.dp),
+            pageSpacing = 12.dp,
+            modifier = Modifier.fillMaxWidth().height(430.dp)
         ) { page ->
             val card = items[page]
+            val offset = (state.currentPage - page).absoluteValue
             Box(
                 Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                    .graphicsLayer {
+                        val scale = if (offset == 0) 1f else 0.94f
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = if (offset == 0) 1f else 0.72f
+                    }
+                    .clip(RoundedCornerShape(26.dp))
                     .clickable { onOpenDetail(card) }
             ) {
-                if (card.poster.isNullOrBlank()) {
-                    ShimmerBox(Modifier.fillMaxSize(), corner = 22)
-                } else {
-                    AsyncImage(
-                        model = card.poster,
-                        contentDescription = card.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
+                PosterArt(card, Modifier.fillMaxSize())
+                // artwork dissolving into the page background
                 Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                0.55f to Color(0x660A0A0D),
-                                1f to Color(0xF70A0A0D)
-                            )
+                    Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            0.45f to Color(0x33000000),
+                            0.75f to Color(0xCC0A0A0D),
+                            1f to Cine.c.bgBottom
                         )
-                )
-                Badge(
-                    text = if (page < 10) "TOP ${page + 1}" else "TRENDING",
-                    color = if (page < 3) OnAccent else Color.White,
-                    background = if (page < 3) Accent else Color.Black.copy(alpha = 0.6f)
+                    )
                 )
                 Column(
                     Modifier
                         .align(Alignment.BottomStart)
-                        .padding(16.dp)
+                        .padding(18.dp)
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        QualityBadge(if (page < 10) "TOP ${page + 1}" else "TRENDING", Modifier)
+                        Spacer(Modifier.width(6.dp))
+                        if (!card.quality.isNullOrBlank()) QualityBadge(card.quality, Modifier)
+                    }
+                    Spacer(Modifier.height(10.dp))
                     Text(
                         card.name,
                         color = Color.White,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
+                        fontSize = 25.sp,
                         maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        style = glowText(Color.Black.copy(alpha = 0.8f))
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        listOfNotNull(card.type, card.quality).joinToString("   •   "),
-                        color = Color(0xFFC9CDD6),
+                        listOfNotNull(card.type, card.api).joinToString("   •   "),
+                        color = Color(0xFFD6D8DE),
                         fontSize = 12.sp
                     )
+                    Spacer(Modifier.height(14.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        GlowButton("Watch now", onClick = { onOpenDetail(card) }, icon = Icons.Filled.PlayArrow)
+                        Spacer(Modifier.width(10.dp))
+                        Box(
+                            Modifier.size(38.dp).glass(CircleShape).clickable { onOpenDetail(card) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Add, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                        }
+                    }
                 }
             }
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp),
-            horizontalArrangement = Arrangement.Center
-        ) {
+        Spacer(Modifier.height(10.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             repeat(items.size) { index ->
                 Box(
                     Modifier
@@ -454,10 +434,7 @@ private fun HeroCarousel(items: List<Card>, onOpenDetail: (Card) -> Unit) {
                         .width(if (index == state.currentPage) 18.dp else 6.dp)
                         .height(6.dp)
                         .clip(CircleShape)
-                        .background(
-                            if (index == state.currentPage) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.outline
-                        )
+                        .background(if (index == state.currentPage) Cine.c.accent else Cine.c.textMuted.copy(alpha = 0.35f))
                 )
             }
         }
@@ -483,24 +460,10 @@ private fun TypeChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        item { IconChip(Icons.Filled.Shuffle, "Random", false) { onRandom() } }
-        item { PillChip("All", selected == null) { onSelect(null) } }
+        item { GlassChip("Random", leading = Icons.Filled.Shuffle, onClick = onRandom) }
+        item { GlassChip("All", selected = selected == null, onClick = { onSelect(null) }) }
         items(types) { type ->
-            PillChip(type, selected == type) { onSelect(type) }
-        }
-    }
-}
-
-@Composable
-private fun RowSkeleton() {
-    Column(Modifier.padding(start = 20.dp, top = 16.dp)) {
-        ShimmerBox(Modifier.width(140.dp).height(16.dp), corner = 8)
-        Spacer(Modifier.height(12.dp))
-        Row {
-            repeat(3) {
-                ShimmerBox(Modifier.width(114.dp).height(180.dp), corner = 14)
-                Spacer(Modifier.width(10.dp))
-            }
+            GlassChip(type, selected = selected == type, onClick = { onSelect(type) })
         }
     }
 }

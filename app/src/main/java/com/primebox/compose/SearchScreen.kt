@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -85,10 +86,10 @@ fun SearchScreen(onOpenDetail: (Card) -> Unit, onBack: () -> Unit) {
             androidx.compose.material3.Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "Back",
-                tint = MaterialTheme.colorScheme.onBackground,
+                tint = Cine.c.text,
                 modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
             )
-            Text("Search", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+            Text("Search", style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
         }
 
         OutlinedTextField(
@@ -106,7 +107,7 @@ fun SearchScreen(onOpenDetail: (Card) -> Unit, onBack: () -> Unit) {
         Text(
             status,
             fontSize = 10.5.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Cine.c.textMuted,
             modifier = Modifier.padding(top = 10.dp)
         )
 
@@ -126,7 +127,7 @@ fun SearchScreen(onOpenDetail: (Card) -> Unit, onBack: () -> Unit) {
 
         if (loading) {
             CircularProgressIndicator(
-                color = MaterialTheme.colorScheme.primary,
+                color = Cine.c.accent,
                 modifier = Modifier.padding(top = 20.dp).height(26.dp)
             )
         }

@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -73,25 +74,25 @@ fun UpdateSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
+        containerColor = Cine.c.glassStrong
     ) {
         Column(Modifier.padding(horizontal = 22.dp, vertical = 8.dp)) {
             Text(
                 "Update available",
                 style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = Cine.c.text
             )
             Text(
                 "PrimeBox ${info.versionName}  •  you have ${Updater.currentName()}",
                 fontSize = 12.5.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Cine.c.textMuted,
                 modifier = Modifier.padding(top = 4.dp)
             )
             if (info.notes.isNotBlank()) {
                 Text(
                     info.notes.trim(),
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cine.c.textMuted,
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
@@ -108,7 +109,7 @@ fun UpdateSheet(
                     if (speed > 0) bytesLabel(speed) + "/s" else "—"
                 ),
                 fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Cine.c.textMuted,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             )
@@ -125,14 +126,14 @@ fun UpdateSheet(
                 Text(
                     message,
                     fontSize = 11.5.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Cine.c.textMuted,
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
             Text(
                 "The APK downloads inside the app and the installer opens automatically.",
                 fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Cine.c.textMuted,
                 modifier = Modifier.padding(top = 10.dp, bottom = 18.dp)
             )
         }
