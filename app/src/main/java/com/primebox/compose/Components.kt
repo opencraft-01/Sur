@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -157,16 +159,21 @@ fun WavyProgress(progress: Float?, modifier: Modifier = Modifier) {
 
         val amplitude = 2.2.dp.toPx()
         val wavelength = 64.dp.toPx()
+        // single helper so every sample is a Float
+        fun waveAt(px: Float): Float = (
+            amplitude * kotlin.math.sin((px / wavelength) * 2.0 * kotlin.math.PI + phase)
+            ).toFloat()
+
         val path = androidx.compose.ui.graphics.Path()
         var x = from
-        path.moveTo(x, cy + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+        path.moveTo(x, cy + waveAt(x))
         while (x <= to) {
-            path.lineTo(x, cy + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+            path.lineTo(x, cy + waveAt(x))
             x += 2f
         }
         x = to
         while (x >= from) {
-            path.lineTo(x, cy + band / 2f + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+            path.lineTo(x, cy + band / 2f + waveAt(x))
             x -= 2f
         }
         path.close()
@@ -179,7 +186,7 @@ fun WavyProgress(progress: Float?, modifier: Modifier = Modifier) {
                 endX = to.coerceAtLeast(from + 1f)
             )
         )
-        val headY = cy + amplitude * kotlin.math.sin((to / wavelength) * 2 * kotlin.math.PI.toFloat() + phase)
+        val headY = cy + waveAt(to)
         drawCircle(color = accent.copy(alpha = 0.22f), radius = band * 0.9f, center = androidx.compose.ui.geometry.Offset(to, headY))
         drawCircle(color = accent, radius = band * 0.5f, center = androidx.compose.ui.geometry.Offset(to, headY))
     }
