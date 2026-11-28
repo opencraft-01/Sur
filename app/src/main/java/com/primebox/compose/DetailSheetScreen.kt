@@ -148,6 +148,9 @@ fun DetailSheetScreen(
             loading = false
             return@LaunchedEffect
         }
+        // let the open animation finish first: a network call in the first frames
+        // is what made the morph stutter
+        kotlinx.coroutines.delay(80)
         val api = provider ?: run { loading = false; status = "No extension"; return@LaunchedEffect }
         val result = withContext(Dispatchers.IO) {
             runCatching { withTimeout(20_000) { api.load(url) } }

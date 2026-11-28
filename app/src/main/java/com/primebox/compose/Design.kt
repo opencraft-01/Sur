@@ -81,7 +81,11 @@ fun Modifier.sharedPoster(ctx: SharedCtx?, key: String): Modifier =
     if (ctx == null) this else with(ctx.st) {
         this@sharedPoster.sharedElement(
             sharedContentState = rememberSharedContentState(key = key),
-            animatedVisibilityScope = ctx.av
+            animatedVisibilityScope = ctx.av,
+            // keep the morphing poster inside the card shape while it flies
+            clipInOverlayDuringTransition = androidx.compose.animation.OverlayClip(
+                RoundedCornerShape(12.dp)
+            )
         )
     }
 
@@ -260,16 +264,12 @@ fun PosterArt(
     ctx: SharedCtx? = null
 ) {
     Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF2A2C38), Color(0xFF101116))))) {
-        Canvas(Modifier.fillMaxSize()) {
-            drawCircle(Color.White.copy(alpha = 0.10f), size.minDimension * 0.55f, Offset(size.width * 0.85f, size.height * 0.2f))
-            drawCircle(Color.Black.copy(alpha = 0.22f), size.minDimension * 0.75f, Offset(size.width * 0.05f, size.height * 0.95f))
-        }
         if (card.poster != null) {
             val context = LocalContext.current
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(context)
                     .data(card.poster)
-                    .crossfade(320)
+                    .crossfade(160)
                     .build(),
                 contentDescription = card.name,
                 contentScale = ContentScale.Crop,

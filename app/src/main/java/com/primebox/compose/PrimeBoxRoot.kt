@@ -138,10 +138,12 @@ fun PrimeBoxRoot(
                         // details rides up like a sheet, then drops away on back
                         // the poster flies between screens, so the page itself only fades
                         targetState is Route.Detail ->
-                            fadeIn(tween(260)) togetherWith fadeOut(tween(160))
+                            fadeIn(tween(200, easing = androidx.compose.animation.core.FastOutSlowInEasing)) togetherWith
+                                fadeOut(tween(140))
 
                         initialState is Route.Detail ->
-                            fadeIn(tween(240)) togetherWith fadeOut(tween(180))
+                            fadeIn(tween(180, easing = androidx.compose.animation.core.FastOutSlowInEasing)) togetherWith
+                                fadeOut(tween(140))
 
                         else -> fadeIn(tween(220)) togetherWith fadeOut(tween(120))
                     }
