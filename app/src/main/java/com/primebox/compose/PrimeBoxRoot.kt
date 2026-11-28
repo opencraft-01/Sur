@@ -170,7 +170,15 @@ fun PrimeBoxRoot(
                                 stack.add(Route.Detail(url, name, poster, api))
                             },
                             onPlayLocal = { file, title ->
-                                stack.add(Route.Player(file.absolutePath, null, title, "Downloaded", emptyMap()))
+                                stack.add(
+                                    Route.Player(
+                                        url = android.net.Uri.fromFile(file).toString(),
+                                        referer = null,
+                                        title = title,
+                                        source = "Downloaded",
+                                        headers = emptyMap()
+                                    )
+                                )
                             }
                         )
 

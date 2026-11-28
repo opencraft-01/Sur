@@ -64,7 +64,16 @@ fun PlayerScreen(
     val context = LocalContext.current
     var fullscreen by remember { mutableStateOf(false) }
 
-    val player = remember(url) {
+    // a bare path (e.g. from an old route) is not a valid URI: make it a file:// one
+    val playableUrl = remember(url) {
+        when {
+            url.contains("://") -> url
+            url.startsWith("/") -> android.net.Uri.fromFile(java.io.File(url)).toString()
+            else -> url
+        }
+    }
+
+    val player = remember(playableUrl) {
         val requestHeaders = HashMap(headers)
         if (!referer.isNullOrBlank()) requestHeaders["Referer"] = referer
         val factory = DefaultHttpDataSource.Factory()
@@ -75,7 +84,15 @@ fun PlayerScreen(
             .setMediaSourceFactory(DefaultMediaSourceFactory(factory))
             .build()
             .apply {
-                setMediaItem(MediaItem.fromUri(url))
+                val mediaItem = if (playableUrl.endsWith(".ts", true)) {
+                    MediaItem.Builder()
+                        .setUri(playableUrl)
+                        .setMimeType(androidx.media3.common.MimeTypes.VIDEO_MP2T)
+                        .build()
+                } else {
+                    MediaItem.fromUri(playableUrl)
+                }
+                setMediaItem(mediaItem)
                 prepare()
                 playWhenReady = true
             }

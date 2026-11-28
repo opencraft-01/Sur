@@ -122,7 +122,12 @@ object Downloader {
                 } else {
                     downloadDirect(item, target)
                 }
+                if (!target.exists() || target.length() < 1024L) {
+                    throw IllegalStateException("empty download (0 bytes)")
+                }
                 item.filePath = target.absolutePath
+                item.bytes = target.length()
+                item.totalBytes = target.length()
                 item.state = State.DONE
                 item.progress = 100
                 Log.i(TAG, "downloaded ${item.title} -> ${target.absolutePath}")
@@ -238,6 +243,11 @@ object Downloader {
     private fun downloadHls(item: Item, target: File) {
         val playlistUrl = item.url
         var playlist = fetchText(item, playlistUrl)
+        if (playlist.contains("EXT-X-KEY") &&
+            (playlist.contains("METHOD=AES-128") || playlist.contains("METHOD=SAMPLE-AES"))
+        ) {
+            error("This stream is encrypted (AES-128), downloading is not supported")
+        }
 
         // master playlist -> pick the highest bandwidth variant
         if (playlist.contains("#EXT-X-STREAM-INF")) {

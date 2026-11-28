@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -174,7 +175,12 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                 val running = item.state == Downloader.State.RUNNING
                 Text(
                     when (item.state) {
-                        Downloader.State.DONE -> "Downloaded  •  ${item.quality}p"
+                        Downloader.State.DONE -> buildString {
+                            append("Ready to play")
+                            if (item.quality > 0) append("  •  ${item.quality}p")
+                            val size = item.filePath?.let { java.io.File(it).length() } ?: 0L
+                            if (size > 0) append("  •  ${bytesLabel(size)}")
+                        }
                         Downloader.State.RUNNING ->
                             if (item.indeterminate || item.totalBytes <= 0) "Downloading…"
                             else "Downloading… ${item.progress}%"
@@ -204,6 +210,14 @@ private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () 
                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
                     )
                 }
+            }
+            if (item.state == Downloader.State.DONE) {
+                androidx.compose.material3.Icon(
+                    Icons.Filled.PlayArrow,
+                    contentDescription = "Play download",
+                    tint = Cine.c.accent,
+                    modifier = Modifier.padding(6.dp).size(22.dp)
+                )
             }
             androidx.compose.material3.Icon(
                 Icons.Filled.Delete,
