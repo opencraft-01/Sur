@@ -81,11 +81,7 @@ fun Modifier.sharedPoster(ctx: SharedCtx?, key: String): Modifier =
     if (ctx == null) this else with(ctx.st) {
         this@sharedPoster.sharedElement(
             sharedContentState = rememberSharedContentState(key = key),
-            animatedVisibilityScope = ctx.av,
-            // keep the morphing poster inside the card shape while it flies
-            clipInOverlayDuringTransition = androidx.compose.animation.OverlayClip(
-                RoundedCornerShape(12.dp)
-            )
+            animatedVisibilityScope = ctx.av
         )
     }
 
