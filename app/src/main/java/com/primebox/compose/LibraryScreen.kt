@@ -46,6 +46,7 @@ import java.io.File
 
 @Composable
 fun LibraryScreen(
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onOpenDetail: (String, String, String?, String?) -> Unit,
     onPlayLocal: (File, String) -> Unit
 ) {
@@ -90,7 +91,7 @@ fun LibraryScreen(
             if (downloads.isEmpty()) {
                 EmptyState("Nothing downloaded yet", "Open a title, load its sources and tap the download icon.")
             } else {
-                LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
+                LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
                     items(downloads) { item ->
                         DownloadRow(item,
                             onPlay = {
@@ -113,7 +114,7 @@ fun LibraryScreen(
             if (history.isEmpty()) {
                 EmptyState("No history", "Watch something and it shows up here.")
             } else {
-                LazyColumn(contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
+                LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
                     items(history) { entry ->
                         HistoryRow(entry) {
                             onOpenDetail(entry.url, entry.title, entry.poster, entry.provider)

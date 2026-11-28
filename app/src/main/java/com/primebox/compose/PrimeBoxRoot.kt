@@ -48,6 +48,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,6 +99,15 @@ fun PrimeBoxRoot(
     var showSwitcher by remember { mutableStateOf(false) }
     var updateInfo by remember { mutableStateOf<Updater.Info?>(null) }
 
+    // Scroll positions live above the navigation graph, so coming back from a
+    // detail page restores exactly where the user was instead of jumping to top.
+    val homeListState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
+        androidx.compose.foundation.lazy.LazyListState()
+    }
+    val libraryListState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
+        androidx.compose.foundation.lazy.LazyListState()
+    }
+
     val current = stack.last()
     val switcherState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -147,6 +157,7 @@ fun PrimeBoxRoot(
                             refreshKey = refreshKey,
                             randomTick = randomTick,
                             ctx = ctx,
+                            listState = homeListState,
                             onOpenDetail = { card ->
                                 stack.add(Route.Detail(card.url, card.name, card.poster, card.api))
                             },
@@ -157,6 +168,7 @@ fun PrimeBoxRoot(
                         )
 
                         is Route.Library -> LibraryScreen(
+                            listState = libraryListState,
                             onOpenDetail = { url, name, poster, api ->
                                 stack.add(Route.Detail(url, name, poster, api))
                             },

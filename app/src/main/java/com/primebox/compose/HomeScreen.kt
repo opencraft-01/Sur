@@ -82,6 +82,7 @@ fun HomeScreen(
     refreshKey: Int,
     randomTick: Int,
     ctx: SharedCtx? = null,
+    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
     onOpenDetail: (Card) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenExtensions: () -> Unit,
@@ -90,7 +91,15 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     var provider by remember { mutableStateOf(Providers.active()) }
-    var rows by remember { mutableStateOf<List<HomeCache.Row>>(emptyList()) }
+    // seed from disk cache on first composition so returning from a detail page
+    // restores the scroll position instead of flashing an empty list
+    var rows by remember {
+        mutableStateOf(
+            Providers.active()
+                ?.let { HomeCache.load(context, it.name)?.rows }
+                .orEmpty()
+        )
+    }
     var loading by remember { mutableStateOf(rows.isEmpty()) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedType by remember { mutableStateOf<String?>(null) }
@@ -187,6 +196,7 @@ fun HomeScreen(
 
     AppBackground {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 110.dp)
         ) {
