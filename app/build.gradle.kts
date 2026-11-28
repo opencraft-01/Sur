@@ -11,9 +11,12 @@ android {
         applicationId = "com.primebox.app"
         minSdk = 23
         targetSdk = 36
-        versionCode = 26
-        versionName = "4.5.1"
+        versionCode = 27
+        versionName = "4.7.0"
         resourceConfigurations += listOf("en")
+
+        // GitHub "owner/repo" whose latest release carries the update APK.
+        buildConfigField("String", "UPDATE_REPO", "\"opencraft-01/Sur\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -101,8 +104,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.5")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // ---- Jetpack Compose (same stack CloudStream uses) ----
-    implementation(platform("androidx.compose:compose-bom:2025.06.01"))
+    // ---- Jetpack Compose + Material 3 (1.4: expressive wavy progress, carousel, search bar) ----
+    implementation(platform("androidx.compose:compose-bom:2025.10.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.compose.foundation:foundation")

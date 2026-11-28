@@ -36,4 +36,7 @@ object Providers {
         }
         return list.firstOrNull()
     }
+
+    /** True when [api] is the currently selected provider (stable-key match, not just the name). */
+    fun isActive(api: MainAPI): Boolean = active()?.let { keyOf(it) == keyOf(api) } == true
 }

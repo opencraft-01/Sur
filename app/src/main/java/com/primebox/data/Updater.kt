@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
 object Updater {
 
     private const val TAG = "PrimeBoxUpdate"
-    private const val API = "https://api.github.com/repos/opencraft-01/Sur/releases/latest"
+    private val API = "https://api.github.com/repos/${BuildConfig.UPDATE_REPO}/releases/latest"
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)

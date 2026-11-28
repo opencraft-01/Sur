@@ -1,5 +1,10 @@
+@file:OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3ExpressiveApi::class)
+
 package com.primebox.compose
 
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -7,385 +12,308 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
-import com.primebox.data.Card
-import kotlin.math.PI
-import kotlin.math.sin
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
+import com.primebox.data.Card as MediaCard
 
-/** Animated skeleton block (Compose shimmer). */
+// ------------------------------------------------------------ shared elements
+
+/** Holder so screens can take part in shared element transitions. */
+class SharedCtx(
+    val st: SharedTransitionScope,
+    val av: AnimatedVisibilityScope
+)
+
+/** Marks a poster as a shared element. No-op without a scope or a key. */
 @Composable
-fun ShimmerBox(modifier: Modifier = Modifier, corner: Int = 16) {
+fun Modifier.sharedPoster(ctx: SharedCtx?, key: String?): Modifier =
+    if (ctx == null || key == null) this else with(ctx.st) {
+        this@sharedPoster.sharedElement(
+            sharedContentState = rememberSharedContentState(key = key),
+            animatedVisibilityScope = ctx.av
+        )
+    }
+
+// ------------------------------------------------------------------- loading
+
+/** Skeleton shimmer built from theme colours. */
+@Composable
+fun Modifier.shimmer(): Modifier {
+    val base = MaterialTheme.colorScheme.surfaceContainerHighest
+    val highlight = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.10f).compositeOver(base)
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val progress by transition.animateFloat(
+    val x = transition.animateFloat(
         initialValue = -1f,
         targetValue = 2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmerProgress"
+        animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart),
+        label = "shimmerX"
     )
-    val base = Cine.c.glass
-    val highlight = Cine.c.glass
-    Box(
-        modifier
-            .clip(RoundedCornerShape(corner.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(base, highlight, base),
-                    start = Offset(progress * 400f, 0f),
-                    end = Offset(progress * 400f + 260f, 260f)
-                )
+    return this.drawBehind {
+        val w = size.width
+        drawRect(
+            Brush.linearGradient(
+                colors = listOf(base, highlight, base),
+                start = Offset(x.value * w, 0f),
+                end = Offset(x.value * w + w, size.height * 0.3f)
             )
+        )
+    }
+}
+
+/** Material 3 expressive wavy progress. `progress == null` means indeterminate. */
+@Composable
+fun WavyProgress(progress: Float?, modifier: Modifier = Modifier) {
+    if (progress == null) {
+        LinearWavyProgressIndicator(modifier = modifier.fillMaxWidth())
+    } else {
+        LinearWavyProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = modifier.fillMaxWidth())
+    }
+}
+
+// -------------------------------------------------------------------- posters
+
+@Composable
+private fun BoxScope.TitleFallback(title: String, show: Boolean) {
+    if (!show) return
+    Text(
+        title,
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        maxLines = 3,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.align(Alignment.Center).padding(10.dp)
     )
 }
 
-/** CloudStream-style poster card: 114x180, radius 10dp, title inside over a scrim. */
+/** Poster image with shimmer while loading and the title as fallback when it fails. */
+@Composable
+fun PosterArt(
+    poster: String?,
+    title: String,
+    modifier: Modifier = Modifier,
+    showTitleFallback: Boolean = true
+) {
+    Box(modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest)) {
+        if (!poster.isNullOrBlank()) {
+            SubcomposeAsyncImage(
+                model = ImageRequest.Builder(LocalContext.current).data(poster).crossfade(true).build(),
+                contentDescription = title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = { Box(Modifier.fillMaxSize().shimmer()) },
+                error = { TitleFallback(title, showTitleFallback) }
+            )
+        } else {
+            TitleFallback(title, showTitleFallback)
+        }
+    }
+}
+
+/** Small tonal tag such as "HD" / "CAM". */
+@Composable
+fun QualityBadge(text: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        shape = MaterialTheme.shapes.extraSmall
+    ) {
+        Text(text, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+    }
+}
+
+/** Portrait poster (2:3) with the title underneath. `width == null` fills the parent (grids). */
 @Composable
 fun PosterCard(
-    card: Card,
-    width: Int = 114,
-    height: Int = 180,
-    progress: Float? = null,
-    onClick: () -> Unit
+    card: MediaCard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp? = 120.dp,
+    ctx: SharedCtx? = null,
+    sharedKey: String? = null,
+    showTitle: Boolean = true
 ) {
-    Column(modifier = Modifier.width(width.dp).padding(end = 10.dp)) {
-        Box(
-            modifier = Modifier
-                .width(width.dp)
-                .height(height.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(Cine.c.glass)
-                .clickable { onClick() }
+    Column(if (width != null) modifier.width(width) else modifier) {
+        Card(
+            onClick = onClick,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().aspectRatio(2f / 3f)
         ) {
-            if (card.poster.isNullOrBlank()) {
-                ShimmerBox(Modifier.fillMaxSize(), corner = 10)
-            } else {
-                AsyncImage(
-                    model = card.poster,
-                    contentDescription = card.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0.62f to Color.Transparent,
-                            1f to Color(0xE60A0A0D)
-                        )
-                    )
-            )
-            if (!card.quality.isNullOrBlank()) {
-                Surface(
-                    color = Color.Black.copy(alpha = 0.55f),
-                    shape = RoundedCornerShape(5.dp),
-                    modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
-                ) {
-                    Text(
-                        card.quality,
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
+            Box(Modifier.fillMaxSize()) {
+                PosterArt(card.poster, card.name, Modifier.fillMaxSize().sharedPoster(ctx, sharedKey))
+                if (!card.quality.isNullOrBlank()) {
+                    QualityBadge(card.quality, Modifier.align(Alignment.TopStart).padding(6.dp))
                 }
             }
+        }
+        if (showTitle) {
             Text(
-                text = card.name,
-                color = Color.White,
-                fontSize = 11.5.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                card.name,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(horizontal = 5.dp, vertical = 5.dp)
+                modifier = Modifier.padding(start = 2.dp, end = 2.dp, top = 6.dp)
             )
-            if (progress != null) {
-                androidx.compose.material3.LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
-                    color = Cine.c.accent,
-                    trackColor = Color.White.copy(alpha = 0.25f),
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .fillMaxWidth()
-                        .height(4.dp)
-                )
+        }
+    }
+}
+
+/** Wide 16:9 card with the title and an optional subtitle (continue watching). */
+@Composable
+fun LandscapeCard(
+    card: MediaCard,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    width: Dp = 196.dp,
+    subtitle: String? = null,
+    ctx: SharedCtx? = null,
+    sharedKey: String? = null
+) {
+    Column(modifier.width(width)) {
+        Card(
+            onClick = onClick,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                PosterArt(card.poster, card.name, Modifier.fillMaxSize().sharedPoster(ctx, sharedKey))
+                Surface(
+                    shape = CircleShape,
+                    color = Color.Black.copy(alpha = 0.45f),
+                    contentColor = Color.White,
+                    modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).size(28.dp)
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.padding(4.dp))
+                }
+                if (!card.quality.isNullOrBlank()) {
+                    QualityBadge(card.quality, Modifier.align(Alignment.TopEnd).padding(6.dp))
+                }
             }
         }
-    }
-}
-
-/** Pill chip. */
-@Composable
-fun PillChip(
-    text: String,
-    selected: Boolean = false,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = if (selected) Cine.c.accent else Cine.c.glass,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Cine.c.textMuted,
-        shape = RoundedCornerShape(50),
-        modifier = Modifier.clickable { onClick() }
-    ) {
         Text(
-            text = text,
-            fontSize = 12.5.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            card.name,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 2.dp, top = 6.dp)
         )
-    }
-}
-
-/** Pill chip with a leading Material icon (no emoji). */
-@Composable
-fun IconChip(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    selected: Boolean = false,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = if (selected) Cine.c.accent else Cine.c.glass,
-        contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else Cine.c.textMuted,
-        shape = RoundedCornerShape(50),
-        modifier = Modifier.clickable { onClick() }
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            androidx.compose.material3.Icon(
-                icon,
-                contentDescription = text,
-                modifier = Modifier.size(15.dp)
+        if (!subtitle.isNullOrBlank()) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 2.dp)
             )
-            androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
-            Text(text, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
 
-/** Small label badge. */
 @Composable
-fun Badge(
-    text: String,
-    color: Color = Cine.c.textMuted,
-    background: Color = Cine.c.glass
-) {
-    Surface(color = background, shape = RoundedCornerShape(8.dp)) {
-        Text(
-            text = text,
-            color = color,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        )
-    }
+fun PosterSkeleton(width: Dp = 120.dp) {
+    Box(Modifier.width(width).aspectRatio(2f / 3f).clip(MaterialTheme.shapes.medium).shimmer())
 }
 
-/** Section header, CloudStream spacing: 12dp vertical, 5dp text padding. */
+// ------------------------------------------------------------------- layout
+
 @Composable
-fun SectionHeader(title: String, action: String? = null, onAction: (() -> Unit)? = null) {
+fun SectionHeader(title: String, modifier: Modifier = Modifier, onSeeAll: (() -> Unit)? = null) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 15.dp, end = 15.dp, top = 12.dp, bottom = 5.dp)
-            .let { base -> if (onAction != null) base.clickable { onAction() } else base },
-        verticalAlignment = Alignment.CenterVertically
+        modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             title,
-            style = MaterialTheme.typography.titleLarge,
-            color = Cine.c.text,
+            style = MaterialTheme.typography.titleMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(horizontal = 5.dp)
+            modifier = Modifier.weight(1f)
         )
-        if (action != null && onAction != null) {
-            androidx.compose.material3.Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "See all",
-                tint = Cine.c.textMuted,
-                modifier = Modifier.padding(start = 6.dp).size(24.dp)
-            )
+        if (onSeeAll != null) {
+            TextButton(onClick = onSeeAll) {
+                Text("See all")
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }
 
-/** Empty / error state with an action button. */
+/** Empty / error state with an optional action. */
 @Composable
 fun EmptyState(
+    icon: ImageVector,
     title: String,
     body: String,
+    modifier: Modifier = Modifier,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 28.dp, vertical = 44.dp),
+        modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
+        Icon(icon, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.padding(2.dp))
+        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
         Text(
             body,
             style = MaterialTheme.typography.bodyMedium,
-            color = Cine.c.textMuted
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
         )
         if (actionLabel != null && onAction != null) {
-            androidx.compose.material3.Button(onClick = onAction) {
-                Text(actionLabel)
-            }
+            Spacer(Modifier.padding(4.dp))
+            FilledTonalButton(onClick = onAction) { Text(actionLabel) }
         }
     }
 }
 
-/**
- * Liquid progress line: a smooth sine band that fills from the left, with a
- * spring-animated value and a soft head glow. Indeterminate mode slides a
- * segment across the track.
- */
-@Composable
-fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: Boolean = false) {
-    val animated by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = progress.coerceIn(0f, 1f),
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.85f,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
-        ),
-        label = "wavyProgress"
-    )
-    val transition = rememberInfiniteTransition(label = "wave")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(2400, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wavePhase"
-    )
-    val sweep by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1700, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "sweep"
-    )
-
-    val track = MaterialTheme.colorScheme.surfaceContainerHigh
-    val accent = MaterialTheme.colorScheme.primary
-    val accentSoft = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
-
-    androidx.compose.foundation.Canvas(modifier = modifier.height(24.dp).fillMaxWidth()) {
-        val band = 6.dp.toPx()
-        val cy = size.height / 2f
-        val pad = band / 2f + 1f
-        val startX = pad
-        val endX = size.width - pad
-        if (endX <= startX) return@Canvas
-        val width = endX - startX
-
-        // track
-        drawLine(
-            color = track,
-            start = Offset(startX, cy),
-            end = Offset(endX, cy),
-            strokeWidth = band,
-            cap = StrokeCap.Round
-        )
-
-        val from: Float
-        val to: Float
-        if (indeterminate) {
-            val seg = width * 0.32f
-            from = startX + ((sweep * (width + seg)) - seg).coerceIn(0f, width)
-            to = (from + seg).coerceIn(startX, endX)
-        } else {
-            from = startX
-            to = startX + width * animated
-        }
-        if (to - from < 2f) return@Canvas
-
-        // smooth sine band between two curves
-        val amplitude = 2.6.dp.toPx()
-        val wavelength = 68.dp.toPx()
-        val path = Path()
-        var x = from
-        path.moveTo(x, cy + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase))
-        while (x <= to) {
-            val y = cy + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase)
-            path.lineTo(x, y)
-            x += 2f
-        }
-        // walk back along the lower edge to make a closed band
-        x = to
-        while (x >= from) {
-            val y = cy + band / 2f + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase)
-            path.lineTo(x, y)
-            x -= 2f
-        }
-        path.close()
-
-        drawPath(
-            path = path,
-            brush = Brush.horizontalGradient(
-                colors = listOf(accentSoft, accent),
-                startX = from,
-                endX = to.coerceAtLeast(from + 1f)
-            )
-        )
-
-        // rounded head + glow
-        val headY = cy + amplitude * sin((to / wavelength) * 2 * PI.toFloat() + phase)
-        drawCircle(color = accent.copy(alpha = 0.22f), radius = band * 0.95f, center = Offset(to, headY))
-        drawCircle(color = accent, radius = band * 0.5f, center = Offset(to, headY))
-    }
-}
-
-/** Formatting helpers shared by download / update screens. */
+/** Formatting helper shared by download / update screens. */
 fun bytesLabel(value: Long): String = when {
     value <= 0 -> "0 MB"
     value < 1024 * 1024 -> String.format(java.util.Locale.US, "%.0f KB", value / 1024.0)

@@ -1,23 +1,32 @@
 package com.primebox.data
 
 import android.content.Context
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 /**
  * Small download engine: progressive MP4 and HLS (segments are concatenated
  * into a single .ts file so it plays offline without a playlist).
+ *
+ * State lives in an immutable [StateFlow] so the UI recomposes on every change.
+ * (The previous version mutated shared objects from several threads, which both
+ * risked ConcurrentModificationException and meant Compose never saw progress.)
  */
 object Downloader {
 
@@ -38,13 +47,14 @@ object Downloader {
         val type: String,
         val quality: Int,
         val provider: String,
-        var state: State = State.QUEUED,
-        var progress: Int = 0,
-        var filePath: String? = null,
-        var bytes: Long = 0L,
-        var totalBytes: Long = 0L,
-        var speed: Long = 0L,
-        var indeterminate: Boolean = false
+        val state: State = State.QUEUED,
+        val progress: Int = 0,
+        val filePath: String? = null,
+        val bytes: Long = 0L,
+        val totalBytes: Long = 0L,
+        val speed: Long = 0L,
+        val indeterminate: Boolean = false,
+        val error: String? = null
     )
 
     private val client = OkHttpClient.Builder()
@@ -53,103 +63,130 @@ object Downloader {
         .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val items = LinkedHashMap<String, Item>()
-    private var listener: (() -> Unit)? = null
+    private val jobs = ConcurrentHashMap<String, Job>()
+    private val calls = ConcurrentHashMap<String, Call>()
 
-    /** Bumped on every progress tick so Compose screens recompose live. */
-    var revision by androidx.compose.runtime.mutableIntStateOf(0)
-        private set
+    private val _items = MutableStateFlow<List<Item>>(emptyList())
 
-    fun listen(block: (() -> Unit)?) {
-        listener = block
+    /** Newest state of every download, in the order they were started. */
+    val items: StateFlow<List<Item>> = _items.asStateFlow()
+
+    @Volatile
+    private var restored = false
+
+    fun all(): List<Item> = _items.value
+
+    private fun find(id: String): Item? = _items.value.firstOrNull { it.id == id }
+
+    private fun update(id: String, change: (Item) -> Item) {
+        _items.update { list -> list.map { if (it.id == id) change(it) else it } }
     }
 
-    fun all(): List<Item> = items.values.toList()
-
+    @Synchronized
     fun init(context: Context) {
-        if (items.isNotEmpty()) return
+        if (restored) return
+        restored = true
         val raw = Store.getRaw(STORE_KEY) ?: return
         runCatching {
             val array = JSONArray(raw)
+            val restoredItems = ArrayList<Item>()
             for (i in 0 until array.length()) {
                 val o = array.optJSONObject(i) ?: continue
                 val headers = HashMap<String, String>()
                 o.optJSONObject("headers")?.let { h ->
                     h.keys().forEach { key -> headers[key] = h.optString(key) }
                 }
-                val item = Item(
+                val path = o.optString("filePath").ifBlank { null }
+                val done = o.optString("state") == "DONE" && path != null && File(path).exists()
+                restoredItems += Item(
                     id = o.optString("id"),
                     title = o.optString("title"),
-                    poster = if (o.has("poster")) o.optString("poster") else null,
+                    poster = o.optString("poster").ifBlank { null },
                     url = o.optString("url"),
-                    referer = if (o.has("referer")) o.optString("referer") else null,
+                    referer = o.optString("referer").ifBlank { null },
                     headers = headers,
                     type = o.optString("type", "VIDEO"),
                     quality = o.optInt("quality", 0),
                     provider = o.optString("provider"),
-                    state = if (o.optString("state") == "DONE") State.DONE else State.QUEUED,
-                    progress = o.optInt("progress", 0),
-                    filePath = if (o.has("filePath")) o.optString("filePath") else null
+                    // anything that was still queued / running when the app died is
+                    // shown as failed, so "tap to retry" (with resume) is available
+                    state = if (done) State.DONE else State.FAILED,
+                    progress = if (done) 100 else o.optInt("progress", 0),
+                    filePath = if (done) path else null
                 )
-                if (item.state == State.DONE && item.filePath != null && !File(item.filePath).exists()) {
-                    item.state = State.FAILED
-                }
-                items[item.id] = item
             }
+            _items.value = restoredItems
         }
-        Log.i(TAG, "restored ${items.size} downloads")
+        Log.i(TAG, "restored ${_items.value.size} downloads")
     }
 
-    fun dir(context: Context): File =
-        File(context.getExternalFilesDir(null), "downloads").apply { mkdirs() }
+    fun dir(context: Context): File {
+        val base = context.getExternalFilesDir(null) ?: context.filesDir
+        return File(base, "downloads").apply { mkdirs() }
+    }
 
     fun start(context: Context, item: Item) {
-        val existing = items[item.id]
-        if (existing != null && (existing.state == State.RUNNING || existing.state == State.DONE)) return
-        items[item.id] = item
-        item.state = State.QUEUED
-        persist()
-        notifyChanged()
+        val appContext = context.applicationContext
+        val existing = find(item.id)
+        if (existing != null && existing.state != State.FAILED) return
 
-        scope.launch {
-            item.state = State.RUNNING
-            item.progress = 0
-            notifyChanged()
-            val target = File(dir(context), "${item.id}.${if (item.type == "M3U8") "ts" else "mp4"}")
-            try {
-                if (item.type == "M3U8") {
-                    downloadHls(item, target)
-                } else {
-                    downloadDirect(item, target)
-                }
-                if (!target.exists() || target.length() < 1024L) {
-                    throw IllegalStateException("empty download (0 bytes)")
-                }
-                item.filePath = target.absolutePath
-                item.bytes = target.length()
-                item.totalBytes = target.length()
-                item.state = State.DONE
-                item.progress = 100
-                Log.i(TAG, "downloaded ${item.title} -> ${target.absolutePath}")
-            } catch (t: Throwable) {
-                Log.e(TAG, "download failed: ${item.title}", t)
-                item.state = State.FAILED
-                runCatching { target.delete() }
-            }
-            persist()
-            notifyChanged()
+        val fresh = item.copy(
+            state = State.QUEUED, progress = 0, filePath = null,
+            bytes = 0L, totalBytes = 0L, speed = 0L, indeterminate = false, error = null
+        )
+        _items.update { list ->
+            if (existing == null) list + fresh else list.map { if (it.id == fresh.id) fresh else it }
         }
+        persist()
+        jobs[fresh.id] = scope.launch { run(appContext, fresh) }
     }
 
     fun delete(item: Item) {
-        item.filePath?.let { path -> runCatching { File(path).delete() } }
-        items.remove(item.id)
+        // stop the transfer first so it cannot recreate the file or re-add the entry
+        jobs.remove(item.id)?.cancel()
+        calls.remove(item.id)?.cancel()
+        val path = find(item.id)?.filePath ?: item.filePath
+        _items.update { list -> list.filterNot { it.id == item.id } }
+        path?.let { runCatching { File(it).delete() } }
         persist()
-        notifyChanged()
     }
 
     fun isDownloaded(url: String): Boolean =
-        items.values.any { it.url == url && it.state == State.DONE }
+        _items.value.any { it.url == url && it.state == State.DONE }
+
+    // ------------------------------------------------------------------ runner
+
+    private fun run(context: Context, item: Item) {
+        val target = File(dir(context), "${item.id}.${if (item.type == "M3U8") "ts" else "mp4"}")
+        update(item.id) { it.copy(state = State.RUNNING, progress = 0) }
+        try {
+            if (item.type == "M3U8") downloadHls(item, target) else downloadDirect(item, target)
+            if (!target.exists() || target.length() < 1024L) {
+                throw IllegalStateException("empty download (0 bytes)")
+            }
+            update(item.id) {
+                it.copy(
+                    state = State.DONE, progress = 100, filePath = target.absolutePath,
+                    bytes = target.length(), totalBytes = target.length(),
+                    speed = 0L, indeterminate = false, error = null
+                )
+            }
+            Log.i(TAG, "downloaded ${item.title} -> ${target.absolutePath}")
+        } catch (t: Throwable) {
+            if (find(item.id) == null) {
+                // deleted while running
+                runCatching { target.delete() }
+            } else {
+                Log.e(TAG, "download failed: ${item.title}", t)
+                // the partial file is kept on purpose: a retry resumes from it
+                update(item.id) { it.copy(state = State.FAILED, speed = 0L, error = t.message) }
+            }
+        } finally {
+            calls.remove(item.id)
+            jobs.remove(item.id)
+        }
+        persist()
+    }
 
     // ------------------------------------------------------------ downloaders
 
@@ -161,6 +198,9 @@ object Downloader {
         return builder.build()
     }
 
+    private fun newCall(item: Item, request: Request): Call =
+        client.newCall(request).also { calls[item.id] = it }
+
     /**
      * Progressive download with resume: if the transfer drops, the next attempt
      * continues from the bytes already on disk (HTTP Range) instead of starting over.
@@ -169,9 +209,10 @@ object Downloader {
         var attempts = 0
         var lastError: Throwable? = null
         while (attempts < 3) {
+            if (find(item.id) == null) throw IllegalStateException("cancelled")
             val resumeFrom = if (target.exists()) target.length() else 0L
             try {
-                client.newCall(request(item.url, item, if (resumeFrom > 0) resumeFrom else null)).execute().use { response ->
+                newCall(item, request(item.url, item, if (resumeFrom > 0) resumeFrom else null)).execute().use { response ->
                     if (response.code == 416) {
                         // server rejected the range: start clean
                         target.delete()
@@ -181,24 +222,26 @@ object Downloader {
                         throw IllegalStateException("HTTP ${response.code}")
                     }
                     val appending = response.code == 206 && resumeFrom > 0
+                    val base = if (appending) resumeFrom else 0L
                     val body = response.body ?: throw IllegalStateException("empty body")
                     val length = body.contentLength()
-                    val total = when {
-                        length <= 0 -> 0L
-                        appending -> length + resumeFrom
-                        else -> length
+                    val total = if (length <= 0) 0L else length + base
+                    update(item.id) {
+                        it.copy(
+                            totalBytes = total,
+                            indeterminate = total <= 0,
+                            bytes = base,
+                            progress = if (total > 0) ((base * 100) / total).toInt().coerceIn(0, 99) else 0
+                        )
                     }
-                    item.totalBytes = total
-                    item.indeterminate = total <= 0
-                    item.bytes = resumeFrom
-                    item.progress = if (total > 0) ((resumeFrom * 100) / total).toInt().coerceIn(0, 99) else 0
 
                     java.io.FileOutputStream(target, appending).use { output ->
                         body.byteStream().use { input ->
                             val buffer = ByteArray(128 * 1024)
-                            var written = resumeFrom
+                            var written = base
                             var windowStart = System.currentTimeMillis()
                             var windowBytes = 0L
+                            var speed = 0L
                             var lastTick = 0L
                             while (true) {
                                 val read = input.read(buffer)
@@ -206,24 +249,24 @@ object Downloader {
                                 output.write(buffer, 0, read)
                                 written += read
                                 windowBytes += read
-                                item.bytes = written
                                 val now = System.currentTimeMillis()
                                 val elapsed = now - windowStart
                                 if (elapsed >= 400) {
-                                    item.speed = windowBytes * 1000L / elapsed
+                                    speed = windowBytes * 1000L / elapsed
                                     windowStart = now
                                     windowBytes = 0L
                                 }
-                                if (total > 0) {
-                                    val pct = ((written * 100) / total).toInt().coerceIn(0, 99)
-                                    if (pct != item.progress && now - lastTick > 300) {
-                                        item.progress = pct
-                                        lastTick = now
-                                        notifyChanged()
-                                    }
-                                } else if (now - lastTick > 300) {
+                                if (now - lastTick > 300) {
                                     lastTick = now
-                                    notifyChanged()
+                                    val bytesNow = written
+                                    val speedNow = speed
+                                    update(item.id) {
+                                        it.copy(
+                                            bytes = bytesNow,
+                                            speed = speedNow,
+                                            progress = if (total > 0) ((bytesNow * 100) / total).toInt().coerceIn(0, 99) else it.progress
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -232,6 +275,7 @@ object Downloader {
                 return
             } catch (t: Throwable) {
                 lastError = t
+                if (find(item.id) == null) throw t
                 attempts++
                 if (attempts >= 3) break
                 Thread.sleep(600L * attempts)
@@ -243,11 +287,6 @@ object Downloader {
     private fun downloadHls(item: Item, target: File) {
         val playlistUrl = item.url
         var playlist = fetchText(item, playlistUrl)
-        if (playlist.contains("EXT-X-KEY") &&
-            (playlist.contains("METHOD=AES-128") || playlist.contains("METHOD=SAMPLE-AES"))
-        ) {
-            error("This stream is encrypted (AES-128), downloading is not supported")
-        }
 
         // master playlist -> pick the highest bandwidth variant
         if (playlist.contains("#EXT-X-STREAM-INF")) {
@@ -273,24 +312,36 @@ object Downloader {
     }
 
     private fun downloadSegments(item: Item, target: File, playlist: String, playlistUrl: String) {
+        // Concatenating segments only works for plain MPEG-TS. Fail loudly instead of
+        // silently writing a file that will never play.
+        if (Regex("#EXT-X-KEY:.*METHOD=(?!NONE)", RegexOption.IGNORE_CASE).containsMatchIn(playlist)) {
+            error("Encrypted HLS streams can't be downloaded")
+        }
+        if (playlist.contains("#EXT-X-MAP")) {
+            error("This HLS stream (fMP4) can't be downloaded")
+        }
+
         val segments = playlist.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
             .map { resolve(playlistUrl, it) }
         if (segments.isEmpty()) error("playlist has no segments")
 
+        update(item.id) { it.copy(indeterminate = false, totalBytes = 0L) }
         var written = 0L
         var windowStart = System.currentTimeMillis()
         var windowBytes = 0L
+        var speed = 0L
         target.outputStream().use { output ->
             segments.forEachIndexed { index, segment ->
+                if (find(item.id) == null) throw IllegalStateException("cancelled")
                 // some CDNs drop a segment now and then: retry before giving up
                 var attempt = 0
                 var ok = false
                 var lastError: Throwable? = null
                 while (attempt < 3 && !ok) {
                     try {
-                        client.newCall(request(segment, item)).execute().use { response ->
+                        newCall(item, request(segment, item)).execute().use { response ->
                             if (!response.isSuccessful) error("segment HTTP ${response.code}")
                             val body = response.body ?: error("empty segment")
                             body.byteStream().use { input ->
@@ -301,13 +352,13 @@ object Downloader {
                                     output.write(buffer, 0, read)
                                     written += read
                                     windowBytes += read
-                                    item.bytes = written
                                 }
                             }
                         }
                         ok = true
                     } catch (t: Throwable) {
                         lastError = t
+                        if (find(item.id) == null) throw t
                         attempt++
                         Thread.sleep(350L * attempt)
                     }
@@ -316,18 +367,25 @@ object Downloader {
                 val now = System.currentTimeMillis()
                 val elapsed = now - windowStart
                 if (elapsed >= 400) {
-                    item.speed = windowBytes * 1000L / elapsed
+                    speed = windowBytes * 1000L / elapsed
                     windowStart = now
                     windowBytes = 0L
                 }
-                item.progress = (((index + 1) * 100) / segments.size).coerceIn(0, 99)
-                notifyChanged()
+                val bytesNow = written
+                val speedNow = speed
+                update(item.id) {
+                    it.copy(
+                        bytes = bytesNow,
+                        speed = speedNow,
+                        progress = (((index + 1) * 100) / segments.size).coerceIn(0, 99)
+                    )
+                }
             }
         }
     }
 
     private fun fetchText(item: Item, url: String): String =
-        client.newCall(request(url, item)).execute().use { response ->
+        newCall(item, request(url, item)).execute().use { response ->
             if (!response.isSuccessful) error("HTTP ${response.code}")
             response.body?.string() ?: error("empty playlist")
         }
@@ -342,14 +400,10 @@ object Downloader {
 
     // -------------------------------------------------------------- plumbing
 
-    private fun notifyChanged() {
-        revision++
-        runCatching { listener?.invoke() }
-    }
-
+    @Synchronized
     private fun persist() {
         val array = JSONArray()
-        items.values.forEach { item ->
+        _items.value.forEach { item ->
             val headers = JSONObject()
             item.headers.forEach { (k, v) -> headers.put(k, v) }
             array.put(

@@ -1,35 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        Window-level theme only. Every screen is Compose and takes its colours from
+        MaterialTheme (dynamic colour on Android 12+, brand scheme otherwise).
+        Material Views stay on the classpath because CS3 extensions may inflate them.
+    -->
     <style name="Theme.PrimeBox" parent="Theme.Material3.DayNight.NoActionBar">
-        <item name="android:windowBackground">@color/surface_dark</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">?attr/colorSurface</item>
         <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="o_mr1">shortEdges</item>
-
-        <!-- expressive shapes -->
-        <item name="shapeAppearanceCornerExtraSmall">@style/ShapeAppearance.PrimeBox.Small</item>
-        <item name="shapeAppearanceCornerSmall">@style/ShapeAppearance.PrimeBox.Small</item>
-        <item name="shapeAppearanceCornerMedium">@style/ShapeAppearance.PrimeBox.Medium</item>
-        <item name="shapeAppearanceCornerLarge">@style/ShapeAppearance.PrimeBox.Large</item>
-        <item name="shapeAppearanceCornerExtraLarge">@style/ShapeAppearance.PrimeBox.ExtraLarge</item>
-    </style>
-
-    <style name="ShapeAppearance.PrimeBox.Small" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">10dp</item>
-    </style>
-    <style name="ShapeAppearance.PrimeBox.Medium" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">16dp</item>
-    </style>
-    <style name="ShapeAppearance.PrimeBox.Large" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">22dp</item>
-    </style>
-    <style name="ShapeAppearance.PrimeBox.ExtraLarge" parent="">
-        <item name="cornerFamily">rounded</item>
-        <item name="cornerSize">28dp</item>
     </style>
 </resources>

@@ -1,40 +1,53 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.primebox.compose
 
-import androidx.compose.foundation.background
+import android.os.Build
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.CleaningServices
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import coil.Coil
 import com.primebox.BuildConfig
 import com.primebox.data.HomeCache
 import com.primebox.data.Store
@@ -45,123 +58,166 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     themeMode: Int,
     onThemeChange: (Int) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChange: (Boolean) -> Unit,
     onShowUpdate: (Updater.Info) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var updateStatus by remember { mutableStateOf("") }
+    val snackbar = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var checking by remember { mutableStateOf(false) }
     var dataSaver by remember { mutableStateOf(Store.dataSaver) }
-    var autoplay by remember { mutableStateOf(Store.autoplayNext) }
+    val transparent = ListItemDefaults.colors(containerColor = Color.Transparent)
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Cine.c.text,
-                    modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
-                )
-                Text("Settings", style = MaterialTheme.typography.displayMedium, color = Cine.c.text)
-            }
-        }
+    fun say(message: String) {
+        scope.launch { snackbar.showSnackbar(message) }
+    }
 
-        item {
-            SectionHeader("Appearance")
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("System" to 0, "Light" to 1, "Dark" to 2).forEach { (label, value) ->
-                    val selected = themeMode == value
-                    Surface(
-                        color = if (selected) Cine.c.glassStrong else Cine.c.glassStrong,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.weight(1f).clickable { onThemeChange(value) }
-                    ) {
-                        Text(
-                            label,
-                            fontSize = 13.sp,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            color = Cine.c.text,
-                            modifier = Modifier.padding(vertical = 16.dp),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbar) }
+    ) { inner ->
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = inner) {
+            item { Header("Appearance") }
+            item {
+                val options = listOf("System" to 0, "Light" to 1, "Dark" to 2)
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    options.forEachIndexed { index, (label, value) ->
+                        SegmentedButton(
+                            selected = themeMode == value,
+                            onClick = { onThemeChange(value) },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                            label = { Text(label) }
                         )
                     }
                 }
             }
-        }
-
-        item {
-            SectionHeader("Playback")
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Autoplay next episode", fontSize = 14.sp, color = Cine.c.text, modifier = Modifier.weight(1f))
-                Switch(checked = autoplay, onCheckedChange = { autoplay = it; Store.autoplayNext = it })
-            }
-        }
-
-        item {
-            SectionHeader("Data")
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Data saver (skip prefetch on mobile data)", fontSize = 14.sp, color = Cine.c.text, modifier = Modifier.weight(1f))
-                Switch(checked = dataSaver, onCheckedChange = { dataSaver = it; Store.dataSaver = it })
-            }
-            Spacer(Modifier.height(10.dp))
-            OutlinedButton(onClick = {
-                com.primebox.img.ImageLoader.clearCache()
-                android.widget.Toast.makeText(context, "Image cache cleared", android.widget.Toast.LENGTH_SHORT).show()
-            }) { Text("Clear image cache") }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = {
-                HomeCache.clear(context)
-                android.widget.Toast.makeText(context, "Home cache cleared", android.widget.Toast.LENGTH_SHORT).show()
-            }) { Text("Clear cached home") }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = {
-                Store.clearHistory()
-                Store.clearRecentSearches()
-                android.widget.Toast.makeText(context, "History cleared", android.widget.Toast.LENGTH_SHORT).show()
-            }) { Text("Clear history") }
-        }
-
-        item {
-            SectionHeader("Updates")
-            Text(
-                "Installed: ${Updater.currentName()} (build ${Updater.currentCode()})",
-                fontSize = 12.sp,
-                color = Cine.c.textMuted
-            )
-            Spacer(Modifier.height(10.dp))
-            Button(onClick = {
-                scope.launch {
-                    updateStatus = "Checking…"
-                    val info = Updater.check()
-                    if (info == null) {
-                        updateStatus = "No release found"
-                    } else if (info.versionCode <= Updater.currentCode()) {
-                        updateStatus = "Up to date"
-                    } else {
-                        updateStatus = "Update ${info.versionName} available"
-                        onShowUpdate(info)
-                    }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                item {
+                    ListItem(
+                        headlineContent = { Text("Dynamic colour") },
+                        supportingContent = { Text("Match the colours of your wallpaper (Material You)") },
+                        trailingContent = { Switch(checked = dynamicColor, onCheckedChange = onDynamicColorChange) },
+                        colors = transparent,
+                        modifier = Modifier.clickable { onDynamicColorChange(!dynamicColor) }
+                    )
                 }
-            }) { Text("Check for updates") }
-            if (updateStatus.isNotBlank()) {
-                Text(updateStatus, fontSize = 11.sp, color = Cine.c.textMuted, modifier = Modifier.padding(top = 8.dp))
             }
-        }
 
-        item {
-            SectionHeader("About")
-            Text(
-                "PrimeBox ${BuildConfig.VERSION_NAME}\nExtension-driven media centre. Extensions are third-party code — install only repositories you trust.",
-                fontSize = 12.sp,
-                color = Cine.c.textMuted
-            )
-            Spacer(Modifier.height(30.dp))
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+            item { Header("Data") }
+            item {
+                ListItem(
+                    headlineContent = { Text("Data saver") },
+                    supportingContent = { Text("Skip update checks and prefetching on mobile data") },
+                    trailingContent = {
+                        Switch(checked = dataSaver, onCheckedChange = { dataSaver = it; Store.dataSaver = it })
+                    },
+                    colors = transparent,
+                    modifier = Modifier.clickable { dataSaver = !dataSaver; Store.dataSaver = dataSaver }
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Clear image cache") },
+                    leadingContent = { Icon(Icons.Filled.Image, contentDescription = null) },
+                    colors = transparent,
+                    modifier = Modifier.clickable {
+                        // posters are loaded by Coil — that is the cache to clear
+                        val loader = Coil.imageLoader(context)
+                        loader.memoryCache?.clear()
+                        loader.diskCache?.clear()
+                        say("Image cache cleared")
+                    }
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Clear cached home") },
+                    leadingContent = { Icon(Icons.Filled.CleaningServices, contentDescription = null) },
+                    colors = transparent,
+                    modifier = Modifier.clickable {
+                        HomeCache.clear(context)
+                        say("Home cache cleared")
+                    }
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Clear history") },
+                    supportingContent = { Text("Watch history and recent searches") },
+                    leadingContent = { Icon(Icons.Filled.DeleteSweep, contentDescription = null) },
+                    colors = transparent,
+                    modifier = Modifier.clickable {
+                        Store.clearHistory()
+                        Store.clearRecentSearches()
+                        say("History cleared")
+                    }
+                )
+            }
+
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+            item { Header("Updates") }
+            item {
+                ListItem(
+                    headlineContent = { Text("Check for updates") },
+                    supportingContent = { Text("Installed: ${Updater.currentName()} (build ${Updater.currentCode()})") },
+                    leadingContent = { Icon(Icons.Filled.SystemUpdate, contentDescription = null) },
+                    trailingContent = {
+                        if (checking) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                    },
+                    colors = transparent,
+                    modifier = Modifier.clickable(enabled = !checking) {
+                        scope.launch {
+                            checking = true
+                            val info = Updater.check()
+                            checking = false
+                            when {
+                                info == null -> say("No release found")
+                                info.versionCode <= Updater.currentCode() -> say("You're up to date")
+                                else -> onShowUpdate(info)
+                            }
+                        }
+                    }
+                )
+            }
+
+            item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+            item { Header("About") }
+            item {
+                ListItem(
+                    headlineContent = { Text("PrimeBox ${BuildConfig.VERSION_NAME}") },
+                    supportingContent = {
+                        Text("Extension-driven media centre. Extensions are third-party code — install only repositories you trust.")
+                    },
+                    leadingContent = { Icon(Icons.Filled.Info, contentDescription = null) },
+                    colors = transparent
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun Header(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp)
+    )
 }

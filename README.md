@@ -12,11 +12,11 @@ extensions that *you* add.
   extensions, install with optional SHA-256 verification.
 - **Direct import** — pick a `.cs3` file with the system file picker.
 - **Drop-in folder** — files placed in `/sdcard/Cloudstream3/plugins/` load on start.
-- **Netflix-style home** — search bar, category chips, auto-scrolling hero carousel,
-  horizontal poster rows.
+- **Material 3 home** — search bar, filter chips, M3 carousel, horizontal poster rows,
+  pull-to-refresh.
 - **Library tab** — downloads (real, with progress) and watch history side by side.
-- **FAB extension switcher** — Material 3 bottom sheet to change the active provider.
-- **Sliding nav indicator**, light / dark / system theme.
+- **Extended FAB source switcher** — Material 3 bottom sheet to change the active provider.
+- Light / dark / system theme and Material You dynamic colour (Android 12+).
 
 ## Build
 
@@ -45,7 +45,7 @@ signed APK as the `PrimeBox-APK` artifact.
 
 | Module | Purpose |
 | --- | --- |
-| `app` | PrimeBox UI (Views + Material 3), extension engine, player |
+| `app` | PrimeBox UI (Jetpack Compose + Material 3 1.4), extension engine, player |
 | `library` | CS3 extension API: `MainAPI`, `ExtractorApi`, extractors, networking |
 | `nicehttp` | HTTP client used by `library` (vendored, was JitPack-only) |
 
@@ -67,3 +67,20 @@ that extensions link against.
 - Built-in YouTube extraction (NewPipeExtractor removed; extensions that resolve
   YouTube themselves are unaffected)
 - Torrent / magnet downloads
+
+## 4.7.0 — streaming-style home + 5-tab navigation
+
+Home: full-bleed auto-sliding hero under a transparent top bar, Top 10 row, deep-navy dark theme (default). Navigation: Home · Search · Downloads · Sources · My Space.
+
+## 4.6.0 — Material 3 UI on top of 4.5.0
+
+All 4.5.0 behaviour is kept (stable provider key, scroll restore, rotating hero, refresh button, empty-download guard, .ts playback).
+
+### Material 3 rewrite
+
+- Every screen uses stock Material 3: `Scaffold`, `NavigationBar`, `TopAppBar` / `LargeTopAppBar`,
+  `SearchBar`, carousel, `FilterChip`, `ListItem`, `SegmentedButton`, `ModalBottomSheet`,
+  `PullToRefreshBox`, wavy progress, snackbars. The custom "glass" design system is gone.
+- Real Material 3 colour scheme (generated tonal palettes from the brand red) + dynamic colour.
+- Edge-to-edge with correct status / navigation bar icon colours in light mode.
+- Bug fixes: see the release notes in the repository history.

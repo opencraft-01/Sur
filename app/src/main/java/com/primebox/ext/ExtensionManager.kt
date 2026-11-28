@@ -12,6 +12,10 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -67,13 +71,41 @@ object ExtensionManager {
 
     private val loadedMap = LinkedHashMap<String, Loaded>()
 
+    private val _revision = MutableStateFlow(0)
+
+    /** Bumped whenever the set of providers may have changed (load / install / remove). */
+    val revision: StateFlow<Int> = _revision.asStateFlow()
+
+    private val _ready = MutableStateFlow(false)
+
+    /** False until the first [loadAll] pass has finished (it runs on a background thread at start-up). */
+    val ready: StateFlow<Boolean> = _ready.asStateFlow()
+
+    private val _restartRequired = MutableStateFlow(false)
+
+    /** True after an extension was removed / updated: its old code lives on until the process restarts. */
+    val restartRequired: StateFlow<Boolean> = _restartRequired.asStateFlow()
+
+    private fun bump() = _revision.update { it + 1 }
+
     /** Last human readable failure, shown in the UI. */
     var lastError: String? = null
         private set
 
-    fun loaded(): List<Loaded> = loadedMap.values.toList()
+    // loadAll() runs on a worker thread while the UI reads these maps
+    fun loaded(): List<Loaded> = synchronized(loadedMap) { loadedMap.values.toList() }
 
-    fun providers(): List<MainAPI> = APIHolder.allProviders.toList()
+    fun providers(): List<MainAPI> {
+        // the list is mutated by extensions while they load; retry instead of crashing
+        repeat(3) {
+            try {
+                return APIHolder.allProviders.toList()
+            } catch (e: ConcurrentModificationException) {
+                Thread.sleep(20)
+            }
+        }
+        return emptyList()
+    }
 
     fun extensionDir(context: Context): File =
         File(context.filesDir, EXT_DIR).apply { mkdirs() }
@@ -88,13 +120,18 @@ object ExtensionManager {
     // ------------------------------------------------------------------ loading
 
     fun loadAll(context: Context) {
-        runCatching {
-            localDir().listFiles()?.forEach { file ->
-                if (file.isFile && file.length() > 0) loadFile(context, file, isLocal = true)
+        try {
+            runCatching {
+                localDir().listFiles()?.forEach { file ->
+                    if (file.isFile && file.length() > 0) loadFile(context, file, isLocal = true)
+                }
             }
-        }
-        extensionDir(context).listFiles()?.forEach { file ->
-            if (file.isFile) loadFile(context, file, isLocal = false)
+            extensionDir(context).listFiles()?.forEach { file ->
+                if (file.isFile) loadFile(context, file, isLocal = false)
+            }
+        } finally {
+            _ready.value = true
+            bump()
         }
     }
 
@@ -118,7 +155,7 @@ object ExtensionManager {
         appendLine("app files: ${context.filesDir.absolutePath}")
         appendLine("external : ${context.getExternalFilesDir(null)?.absolutePath}")
         appendLine("providers: ${APIHolder.allProviders.size}")
-        appendLine("loaded   : ${loadedMap.size}")
+        appendLine("loaded   : ${loaded().size}")
         appendLine("---")
         diagnostics().forEach { appendLine(it) }
     }
@@ -136,7 +173,8 @@ object ExtensionManager {
         fun stage(dir: File): File? = try {
             if (!dir.exists()) dir.mkdirs()
             val dest = File(dir, file.name)
-            if (!dest.exists() || dest.length() != file.length()) {
+            // size alone is not enough: an updated extension can have the same byte length
+            if (!dest.exists() || dest.length() != file.length() || dest.lastModified() != file.lastModified()) {
                 file.copyTo(dest, overwrite = true)
                 dest.setLastModified(file.lastModified())
             }
@@ -154,7 +192,7 @@ object ExtensionManager {
 
     fun loadFile(context: Context, file: File, isLocal: Boolean = false): Boolean {
         val path = file.absolutePath
-        if (loadedMap.containsKey(path)) return true
+        if (synchronized(loadedMap) { loadedMap.containsKey(path) }) return true
 
         log("load ${file.name} (${file.length()} bytes, local=$isLocal)")
         if (file.length() == 0L) {
@@ -175,6 +213,7 @@ object ExtensionManager {
             try {
                 loadFrom(context, file, copy, isLocal)
                 lastError = null
+                bump()
                 return true
             } catch (t: Throwable) {
                 lastFailure = "${t.javaClass.simpleName}: ${t.message}"
@@ -223,7 +262,9 @@ object ExtensionManager {
 
         val mine = APIHolder.allProviders.toList()
             .filter { it.sourcePlugin == dexFile.absolutePath || it.sourcePlugin == original.absolutePath }
-        loadedMap[original.absolutePath] = Loaded(name, version, original.absolutePath, mine, isLocal)
+        synchronized(loadedMap) {
+            loadedMap[original.absolutePath] = Loaded(name, version, original.absolutePath, mine, isLocal)
+        }
         log("  ✓ loaded $name (v$version) with ${mine.size} provider(s)")
         if (mine.isEmpty()) {
             log("  ! no providers registered by this extension")
@@ -236,9 +277,17 @@ object ExtensionManager {
      */
     fun unload(context: Context, item: Loaded): Boolean {
         return try {
-            loadedMap.remove(item.path)
+            synchronized(loadedMap) { loadedMap.remove(item.path) }
             val file = File(item.path)
-            if (file.exists()) file.delete() else true
+            // also drop the staged dex copies, otherwise a stale copy could be picked up again
+            runCatching { File(File(context.filesDir, "dex"), file.name).delete() }
+            runCatching {
+                context.getExternalFilesDir(null)?.let { File(File(it, "plugins"), file.name).delete() }
+            }
+            val removed = if (file.exists()) file.delete() else true
+            _restartRequired.value = true
+            bump()
+            removed
         } catch (t: Throwable) {
             Log.e(TAG, "unload failed", t)
             false
@@ -591,14 +640,22 @@ object ExtensionManager {
             }
 
             if (!plugin.fileHash.isNullOrBlank()) {
-                val hash = sha256(tmp)
-                if (hash != plugin.fileHash) {
+                // accept both "sha256-<hex>" and a bare hex digest
+                val expected = plugin.fileHash.trim().removePrefix("sha256-").lowercase()
+                val actual = sha256(tmp).removePrefix("sha256-").lowercase()
+                if (actual != expected) {
                     tmp.delete()
                     return@withContext false to "Hash mismatch — download rejected"
                 }
             }
+            val alreadyLoaded = synchronized(loadedMap) { loadedMap.containsKey(target.absolutePath) }
             tmp.copyTo(target, overwrite = true)
             tmp.delete()
+            if (alreadyLoaded) {
+                // the old classes are still in memory and cannot be swapped out at runtime
+                _restartRequired.value = true
+                return@withContext true to "Updated ${plugin.name} — restart PrimeBox to apply"
+            }
             val ok = loadFile(context, target)
             ok to if (ok) "Installed ${plugin.name}" else (lastError ?: "Downloaded, but extension failed to load")
         } catch (t: Throwable) {

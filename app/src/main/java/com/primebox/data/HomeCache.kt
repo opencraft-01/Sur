@@ -18,6 +18,7 @@ object HomeCache {
 
     private fun file(context: Context) = File(context.filesDir, FILE)
 
+    @Synchronized
     fun save(context: Context, provider: String, rows: List<Row>) {
         runCatching {
             val root = read(context)
@@ -60,6 +61,7 @@ object HomeCache {
         }
     }
 
+    @Synchronized
     fun load(context: Context, provider: String): Home? {
         return runCatching {
             val entry = read(context).optJSONObject(provider) ?: return null
@@ -88,6 +90,7 @@ object HomeCache {
         }.getOrNull()
     }
 
+    @Synchronized
     fun clear(context: Context) {
         runCatching { file(context).delete() }
     }

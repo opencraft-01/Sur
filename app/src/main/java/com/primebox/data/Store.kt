@@ -19,14 +19,20 @@ object Store {
 
     /** 0 = follow system, 1 = light, 2 = dark */
     var themeMode: Int
-        get() = sp.getInt("theme_mode", 0)
+        get() = sp.getInt("theme_mode", 2)
         set(value) = sp.edit().putInt("theme_mode", value).apply()
 
-    // -------------------------------------------------------------- providers
-
+    /** Stable identity (class + plugin file) of the chosen provider; see Providers.active(). */
     var activeProviderKey: String?
         get() = sp.getString("active_provider_key", null)
         set(value) = sp.edit().putString("active_provider_key", value).apply()
+
+    /** Use wallpaper-derived Material You colours on Android 12+. */
+    var dynamicColor: Boolean
+        get() = sp.getBoolean("dynamic_color", false)
+        set(value) = sp.edit().putBoolean("dynamic_color", value).apply()
+
+    // -------------------------------------------------------------- providers
 
     var activeProvider: String?
         get() = sp.getString("active_provider", null)
@@ -74,7 +80,7 @@ object Store {
                 val o = arr.optJSONObject(i) ?: return@mapNotNull null
                 HistoryEntry(
                     title = o.optString("title"),
-                    poster = if (o.has("poster")) o.optString("poster") else null,
+                    poster = o.optString("poster").ifBlank { null },
                     provider = o.optString("provider"),
                     url = o.optString("url"),
                     time = o.optLong("time")
@@ -140,7 +146,7 @@ object Store {
         get() = sp.getLong("last_update_check", 0L)
         set(value) = sp.edit().putLong("last_update_check", value).apply()
 
-    /** Skip prefetch / auto refresh on metered networks. */
+    /** Skip prefetch / update checks while on a metered (mobile data) network. */
     var dataSaver: Boolean
         get() = sp.getBoolean("data_saver", true)
         set(value) = sp.edit().putBoolean("data_saver", value).apply()
@@ -149,10 +155,4 @@ object Store {
     var lastPromptedUpdate: Int
         get() = sp.getInt("last_prompted_update", 0)
         set(value) = sp.edit().putInt("last_prompted_update", value).apply()
-
-    // ------------------------------------------------------------ bookmarks
-
-    var autoplayNext: Boolean
-        get() = sp.getBoolean("autoplay_next", true)
-        set(value) = sp.edit().putBoolean("autoplay_next", value).apply()
 }

@@ -1,32 +1,44 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.primebox.compose
 
-import android.net.Uri
-import androidx.compose.foundation.background
+import android.text.format.DateUtils
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,62 +46,56 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.primebox.data.Downloader
 import com.primebox.data.Store
 import java.io.File
 
 @Composable
 fun LibraryScreen(
-    listState: androidx.compose.foundation.lazy.LazyListState = androidx.compose.foundation.lazy.rememberLazyListState(),
-    onOpenDetail: (String, String, String?, String?) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
+    onOpenDetail: (url: String, name: String, poster: String?, api: String?) -> Unit,
     onPlayLocal: (File, String) -> Unit
 ) {
     val context = LocalContext.current
-    var mode by remember { mutableStateOf(0) } // 0 downloads, 1 history
-    // reading revision subscribes the screen to every progress tick
-    val downloadRevision = Downloader.revision
-    val downloads = remember(downloadRevision) { Downloader.all() }
+    val downloads by Downloader.items.collectAsStateWithLifecycle()
     var history by remember { mutableStateOf(Store.history()) }
+    var tab by remember { mutableIntStateOf(0) }
+    var pendingDelete by remember { mutableStateOf<Downloader.Item?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
 
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-    ) {
-        Text(
-            "Library",
-            style = MaterialTheme.typography.displayMedium,
-            color = Cine.c.text,
-            modifier = Modifier.padding(start = 20.dp, top = 18.dp)
+    Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text("Library") },
+            actions = {
+                if (tab == 1 && history.isNotEmpty()) {
+                    IconButton(onClick = { confirmClear = true }) {
+                        Icon(Icons.Filled.DeleteSweep, contentDescription = "Clear history")
+                    }
+                }
+            }
         )
-        Text(
-            "Your downloads and watch history",
-            fontSize = 12.sp,
-            color = Cine.c.textMuted,
-            modifier = Modifier.padding(start = 20.dp, top = 4.dp)
-        )
-
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StatCard("Downloads", downloads.size.toString(), mode == 0, Modifier.weight(1f)) { mode = 0 }
-            StatCard("History", history.size.toString(), mode == 1, Modifier.weight(1f)) { mode = 1 }
+        PrimaryTabRow(selectedTabIndex = tab) {
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Downloads (${downloads.size})") })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("History (${history.size})") })
         }
 
-        if (mode == 0) {
+        if (tab == 0) {
             if (downloads.isEmpty()) {
-                EmptyState("Nothing downloaded yet", "Open a title, load its sources and tap the download icon.")
+                EmptyState(
+                    icon = Icons.Filled.Download,
+                    title = "Nothing downloaded yet",
+                    body = "Open a title, load its sources and tap the download icon."
+                )
             } else {
-                LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
-                    items(downloads) { item ->
-                        DownloadRow(item,
-                            onPlay = {
+                LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
+                    items(downloads, key = { it.id }) { item ->
+                        DownloadRow(
+                            item = item,
+                            onClick = {
                                 val path = item.filePath
                                 if (item.state == Downloader.State.DONE && path != null && File(path).exists()) {
                                     onPlayLocal(File(path), item.title)
@@ -97,173 +103,147 @@ fun LibraryScreen(
                                     Downloader.start(context, item)
                                 }
                             },
-                            onDelete = { Downloader.delete(item) }
+                            onDelete = { pendingDelete = item }
                         )
+                        HorizontalDivider()
                     }
                 }
             }
         } else {
             if (history.isEmpty()) {
-                EmptyState("No history", "Watch something and it shows up here.")
+                EmptyState(
+                    icon = Icons.Filled.History,
+                    title = "No history",
+                    body = "Watch something and it shows up here."
+                )
             } else {
-                LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp)) {
+                LazyColumn(state = listState, contentPadding = PaddingValues(bottom = 16.dp)) {
                     items(history) { entry ->
-                        HistoryRow(entry) {
-                            onOpenDetail(entry.url, entry.title, entry.poster, entry.provider)
-                        }
-                    }
-                    item {
-                        Spacer(Modifier.height(12.dp))
-                        androidx.compose.material3.OutlinedButton(onClick = {
-                            Store.clearHistory()
-                            history = Store.history()
-                        }) { Text("Clear history") }
+                        ListItem(
+                            headlineContent = { Text(entry.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                            supportingContent = {
+                                Text(
+                                    listOf(
+                                        entry.provider,
+                                        DateUtils.getRelativeTimeSpanString(entry.time).toString()
+                                    ).filter { it.isNotBlank() }.joinToString("  •  ")
+                                )
+                            },
+                            leadingContent = { Thumb(entry.poster, entry.title) },
+                            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                            modifier = Modifier.clickable {
+                                onOpenDetail(entry.url, entry.title, entry.poster, entry.provider)
+                            }
+                        )
+                        HorizontalDivider()
                     }
                 }
             }
         }
     }
-}
 
-@Composable
-private fun StatCard(title: String, value: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    Surface(
-        color = if (selected) Cine.c.glassStrong else Cine.c.glassStrong,
-        shape = RoundedCornerShape(20.dp),
-        modifier = modifier.clickable { onClick() }
-    ) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Cine.c.textMuted)
-            Text(value, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Cine.c.text)
-        }
+    pendingDelete?.let { item ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete download?") },
+            text = { Text("“${item.title}” will be removed from this device.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Downloader.delete(item)
+                    pendingDelete = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { pendingDelete = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear watch history?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    Store.clearHistory()
+                    history = Store.history()
+                    confirmClear = false
+                }) { Text("Clear") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+        )
     }
 }
 
 @Composable
-private fun DownloadRow(item: Downloader.Item, onPlay: () -> Unit, onDelete: () -> Unit) {
-    Surface(
-        color = Cine.c.glassStrong,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { onPlay() }
-    ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(52.dp, 74.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Cine.c.glass)
-            ) {
-                if (!item.poster.isNullOrBlank()) {
-                    AsyncImage(
-                        model = item.poster,
-                        contentDescription = item.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    item.title,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Cine.c.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val running = item.state == Downloader.State.RUNNING
-                Text(
-                    when (item.state) {
-                        Downloader.State.DONE -> buildString {
-                            append("Ready to play")
-                            if (item.quality > 0) append("  •  ${item.quality}p")
-                            val size = item.filePath?.let { java.io.File(it).length() } ?: 0L
-                            if (size > 0) append("  •  ${bytesLabel(size)}")
-                        }
-                        Downloader.State.RUNNING ->
-                            if (item.indeterminate || item.totalBytes <= 0) "Downloading…"
-                            else "Downloading… ${item.progress}%"
-                        Downloader.State.FAILED -> "Failed — tap to retry"
-                        else -> "Queued"
-                    },
-                    fontSize = 11.sp,
-                    color = Cine.c.textMuted
-                )
-                if (running) {
-                    val unknown = item.indeterminate || item.totalBytes <= 0
-                    WavyProgress(
-                        progress = item.progress / 100f,
-                        modifier = Modifier.padding(top = 6.dp),
-                        indeterminate = unknown
-                    )
+private fun Thumb(poster: String?, title: String) {
+    PosterArt(
+        poster, title,
+        Modifier.size(width = 52.dp, height = 78.dp).clip(MaterialTheme.shapes.small),
+        showTitleFallback = false
+    )
+}
+
+@Composable
+private fun DownloadRow(item: Downloader.Item, onClick: () -> Unit, onDelete: () -> Unit) {
+    val running = item.state == Downloader.State.RUNNING || item.state == Downloader.State.QUEUED
+    val unknown = item.indeterminate || item.totalBytes <= 0
+    Column {
+        ListItem(
+            headlineContent = { Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            supportingContent = {
+                Column {
                     Text(
-                        buildString {
-                            if (!unknown) append("${item.progress}%   •   ")
-                            append(bytesLabel(item.bytes))
-                            if (item.totalBytes > 0) append(" / ${bytesLabel(item.totalBytes)}")
-                            append("   •   ")
-                            append(if (item.speed > 0) bytesLabel(item.speed) + "/s" else "—")
+                        when (item.state) {
+                            Downloader.State.DONE -> buildString {
+                                append("Ready to play")
+                                if (item.quality > 0) append("  •  ${item.quality}p")
+                                val size = item.filePath?.let { File(it).length() } ?: 0L
+                                if (size > 0) append("  •  ${bytesLabel(size)}")
+                            }
+                            Downloader.State.RUNNING ->
+                                if (unknown && item.type != "M3U8") "Downloading…" else "Downloading… ${item.progress}%"
+                            Downloader.State.FAILED -> "Failed — tap to retry" + (item.error?.let { " ($it)" } ?: "")
+                            Downloader.State.QUEUED -> "Queued"
                         },
-                        fontSize = 10.5.sp,
-                        color = Cine.c.textMuted,
-                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (running) {
+                        WavyProgress(
+                            progress = if (item.state == Downloader.State.QUEUED || (unknown && item.type != "M3U8")) null
+                            else item.progress / 100f,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                        Text(
+                            buildString {
+                                append(bytesLabel(item.bytes))
+                                if (item.totalBytes > 0) append(" / ${bytesLabel(item.totalBytes)}")
+                                append("  •  ")
+                                append(if (item.speed > 0) bytesLabel(item.speed) + "/s" else "—")
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
-            }
-            if (item.state == Downloader.State.DONE) {
-                androidx.compose.material3.Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = "Play download",
-                    tint = Cine.c.accent,
-                    modifier = Modifier.padding(6.dp).size(22.dp)
-                )
-            }
-            androidx.compose.material3.Icon(
-                Icons.Filled.Delete,
-                contentDescription = "Delete download",
-                tint = Cine.c.textMuted,
-                modifier = Modifier.clickable { onDelete() }.padding(8.dp).size(20.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun HistoryRow(entry: Store.HistoryEntry, onClick: () -> Unit) {
-    Surface(
-        color = Cine.c.glassStrong,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).clickable { onClick() }
-    ) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .size(52.dp, 74.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Cine.c.glass)
-            ) {
-                if (!entry.poster.isNullOrBlank()) {
-                    AsyncImage(
-                        model = entry.poster,
-                        contentDescription = entry.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+            },
+            leadingContent = { Thumb(item.poster, item.title) },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.state == Downloader.State.FAILED) {
+                        IconButton(onClick = onClick) { Icon(Icons.Filled.Refresh, contentDescription = "Retry") }
+                    }
+                    if (item.state == Downloader.State.DONE) {
+                        IconButton(onClick = onClick) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = "Play download", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Filled.Delete, contentDescription = if (running) "Cancel download" else "Delete download")
+                    }
                 }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text(
-                    entry.title,
-                    fontSize = 13.5.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Cine.c.text,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(entry.provider, fontSize = 11.sp, color = Cine.c.textMuted)
-            }
-        }
+            },
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            modifier = Modifier.clickable(onClick = onClick)
+        )
     }
 }

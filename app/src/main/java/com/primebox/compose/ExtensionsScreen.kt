@@ -1,14 +1,23 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+
 package com.primebox.compose
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,18 +25,38 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,10 +67,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.primebox.data.Store
 import com.primebox.ext.ExtensionManager
 import com.primebox.ext.Languages
@@ -54,33 +83,47 @@ import kotlinx.coroutines.withContext
 fun ExtensionsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    val restartRequired by ExtensionManager.restartRequired.collectAsStateWithLifecycle()
 
     var providers by remember { mutableStateOf(Providers.all()) }
     var installed by remember { mutableStateOf(ExtensionManager.loaded()) }
     var repos by remember { mutableStateOf(Store.repositories) }
+    var activeName by remember { mutableStateOf(Store.activeProvider) }
     var repoInput by remember { mutableStateOf("") }
     var repoState by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var repoPlugins by remember { mutableStateOf<Map<String, List<ExtensionManager.RepoPlugin>>>(emptyMap()) }
+    var installing by remember { mutableStateOf<Set<String>>(emptySet()) }
     var diagnostics by remember { mutableStateOf<String?>(null) }
+
+    fun say(message: String) {
+        scope.launch { snackbar.showSnackbar(message) }
+    }
 
     fun refresh() {
         providers = Providers.all()
         installed = ExtensionManager.loaded()
         repos = Store.repositories
+        activeName = Store.activeProvider
     }
+
+    // The drop-in folder lives on shared storage; Android 11+ needs "all files access" for it.
+    val needsAllFiles = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            val (ok, message) = ExtensionManager.importFromUri(context, uri)
-            android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
-            if (ok) refresh()
+            scope.launch {
+                val (ok, message) = withContext(Dispatchers.IO) { ExtensionManager.importFromUri(context, uri) }
+                say(message)
+                if (ok) refresh()
+            }
         }
     }
 
     fun loadRepo(url: String) {
         repoState = repoState + (url to "Loading…")
         scope.launch {
-            val result = withContext(Dispatchers.IO) { runCatching { ExtensionManager.fetchRepo(url) } }
+            val result = runCatching { ExtensionManager.fetchRepo(url) }
             val info = result.getOrNull()
             if (info == null) {
                 repoState = repoState + (url to ("Failed — " + (result.exceptionOrNull()?.message ?: "unknown error")))
@@ -91,250 +134,283 @@ fun ExtensionsScreen(onBack: () -> Unit) {
         }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
-    ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.Icon(
-                    Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Cine.c.text,
-                    modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
-                )
-                Text("Extensions", style = MaterialTheme.typography.displayMedium, color = Cine.c.text)
-            }
-            Text(
-                "Add a repository, or import a .cs3 file directly",
-                fontSize = 12.sp,
-                color = Cine.c.textMuted,
-                modifier = Modifier.padding(top = 4.dp)
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            TopAppBar(
+                title = { Text("Extensions") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                }
             )
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { runCatching { importer.launch(arrayOf("*/*")) } }) { Text("Import .cs3") }
-                OutlinedButton(onClick = {
-                    val (count, message) = ExtensionManager.scanDownloads(context)
-                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
-                    if (count > 0) refresh()
-                }) { Text("Scan Download") }
-                OutlinedButton(onClick = {
-                    scope.launch {
-                        withContext(Dispatchers.IO) { ExtensionManager.loadAll(context) }
+        },
+        snackbarHost = { SnackbarHost(snackbar) }
+    ) { inner ->
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp, end = 16.dp, top = inner.calculateTopPadding() + 8.dp, bottom = inner.calculateBottomPadding() + 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            item {
+                Text(
+                    "Add a repository, or import a .cs3 file directly.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (restartRequired) {
+                item {
+                    ElevatedCard(Modifier.fillMaxWidth()) {
+                        Text(
+                            "Restart PrimeBox to finish removing or updating an extension — its old code stays loaded until then.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(16.dp)
+                        )
+                    }
+                }
+            }
+
+            if (needsAllFiles) {
+                item {
+                    OutlinedCard(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Allow file access", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Needed to load extensions dropped into /Cloudstream3/plugins or Download. Importing with the file picker works without it.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                            )
+                            FilledTonalButton(onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(
+                                            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                                            Uri.parse("package:${context.packageName}")
+                                        )
+                                    )
+                                }
+                            }) { Text("Open settings") }
+                        }
+                    }
+                }
+            }
+
+            item {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(
+                        onClick = { runCatching { importer.launch(arrayOf("*/*")) } },
+                        label = { Text("Import .cs3") },
+                        leadingIcon = { Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    AssistChip(
+                        onClick = {
+                            scope.launch {
+                                val (count, message) = withContext(Dispatchers.IO) { ExtensionManager.scanDownloads(context) }
+                                say(message)
+                                if (count > 0) refresh()
+                            }
+                        },
+                        label = { Text("Scan Download") },
+                        leadingIcon = { Icon(Icons.Filled.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    AssistChip(
+                        onClick = {
+                            scope.launch {
+                                withContext(Dispatchers.IO) { ExtensionManager.loadAll(context) }
+                                refresh()
+                                say("Reloaded")
+                            }
+                        },
+                        label = { Text("Reload") },
+                        leadingIcon = { Icon(Icons.Filled.Replay, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                    AssistChip(
+                        onClick = { diagnostics = ExtensionManager.diagnosticsText(context) },
+                        label = { Text("Load log") },
+                        leadingIcon = { Icon(Icons.Filled.BugReport, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                    )
+                }
+            }
+
+            item { SectionLabel("Active source") }
+            if (providers.isEmpty()) {
+                item { Muted("No extension loaded") }
+            }
+            items(providers) { api ->
+                ListItem(
+                    headlineContent = { Text(api.name) },
+                    supportingContent = { Text(Languages.chip(api.lang)) },
+                    leadingContent = { RadioButton(selected = activeName == api.name && Providers.isActive(api), onClick = null) },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                    modifier = Modifier.clickable {
+                        Providers.select(api)
                         refresh()
                     }
-                }) { Text("Reload") }
+                )
             }
-            Spacer(Modifier.height(8.dp))
-            OutlinedButton(onClick = {
-                diagnostics = ExtensionManager.diagnosticsText(context)
-            }) { Text("Diagnostics / load log") }
-        }
 
-        item {
-            SectionHeader("Active source")
-            if (providers.isEmpty()) {
-                Text("No extension loaded", fontSize = 12.5.sp, color = Cine.c.textMuted)
-            }
-            providers.forEach { api ->
-                val active = Store.activeProvider == api.name
-                Surface(
-                    color = if (active) Cine.c.glassStrong else Cine.c.glassStrong,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)
-                        .clickable {
-                            Providers.select(api)
-                            refresh()
-                        }
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            api.name,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Cine.c.text,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Badge(Languages.chip(api.lang), Cine.c.accent, Cine.c.glassStrong)
-                        if (active) {
-                            Spacer(Modifier.padding(horizontal = 4.dp))
-                            Badge("ACTIVE", MaterialTheme.colorScheme.onPrimary, Cine.c.accent)
-                        }
-                    }
-                }
-            }
-        }
-
-        item {
-            SectionHeader("Installed")
+            item { SectionLabel("Installed") }
             if (installed.isEmpty()) {
-                Text("Nothing installed yet", fontSize = 12.5.sp, color = Cine.c.textMuted)
+                item { Muted("Nothing installed yet") }
             }
-            installed.forEach { item ->
-                Surface(
-                    color = Cine.c.glassStrong,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
-                            Text(
-                                "${if (item.isLocal) "local file" else "downloaded"}  •  v${if (item.version == Int.MIN_VALUE) "?" else item.version}  •  ${item.providers.size} providers",
-                                fontSize = 11.sp,
-                                color = Cine.c.textMuted
-                            )
-                        }
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Delete,
-                            contentDescription = "Remove",
-                            tint = Cine.c.textMuted,
-                            modifier = Modifier.clickable {
-                                ExtensionManager.unload(context, item)
-                                refresh()
-                            }.padding(8.dp).size(20.dp)
+            items(installed) { item ->
+                ListItem(
+                    headlineContent = { Text(item.name) },
+                    supportingContent = {
+                        Text(
+                            "${if (item.isLocal) "local file" else "downloaded"}  •  " +
+                                "v${if (item.version == Int.MIN_VALUE) "?" else item.version}  •  ${item.providers.size} providers"
                         )
-                    }
-                }
+                    },
+                    trailingContent = {
+                        IconButton(onClick = {
+                            ExtensionManager.unload(context, item)
+                            refresh()
+                        }) { Icon(Icons.Filled.Delete, contentDescription = "Remove ${item.name}") }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
             }
-        }
 
-        item {
-            SectionHeader("Repositories")
-            ExtensionManager.PRESETS.forEach { preset ->
-                Surface(
-                    color = Cine.c.glassStrong,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-                ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(preset.name, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
-                            Text("One tap add", fontSize = 10.5.sp, color = Cine.c.textMuted)
-                        }
+            item { SectionLabel("Repositories") }
+            items(ExtensionManager.PRESETS) { preset ->
+                ListItem(
+                    headlineContent = { Text(preset.name) },
+                    supportingContent = { Text("One tap add") },
+                    trailingContent = {
                         Button(onClick = {
                             Store.addRepository(preset.url)
                             refresh()
                             loadRepo(preset.url)
                         }) { Text("Add") }
-                    }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = repoInput,
+                        onValueChange = { repoInput = it },
+                        label = { Text("Repository URL") },
+                        placeholder = { Text("https://example.com/repo.json") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Button(onClick = {
+                        val url = repoInput.trim()
+                        if (url.isNotBlank()) {
+                            Store.addRepository(url)
+                            repoInput = ""
+                            refresh()
+                            loadRepo(url)
+                        }
+                    }) { Text("Add") }
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = repoInput,
-                    onValueChange = { repoInput = it },
-                    placeholder = { Text("https://example.com/repo.json", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.padding(horizontal = 6.dp))
-                Button(onClick = {
-                    val url = repoInput.trim()
-                    if (url.isNotBlank()) {
-                        Store.addRepository(url)
-                        repoInput = ""
-                        refresh()
-                        loadRepo(url)
-                    }
-                }) { Text("Add") }
-            }
-        }
 
-        items(repos) { repoUrl ->
-            Surface(
-                color = Cine.c.glassStrong,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-            ) {
-                Column(Modifier.padding(14.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            repoUrl,
-                            fontSize = 11.5.sp,
-                            color = Cine.c.textMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Refresh,
-                            contentDescription = "Reload repository",
-                            tint = Cine.c.textMuted,
-                            modifier = Modifier.clickable { loadRepo(repoUrl) }.padding(8.dp).size(18.dp)
-                        )
-                        androidx.compose.material3.Icon(
-                            Icons.Filled.Close,
-                            contentDescription = "Remove repository",
-                            tint = Cine.c.textMuted,
-                            modifier = Modifier.clickable {
+            items(repos) { repoUrl ->
+                OutlinedCard(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(start = 16.dp, top = 8.dp, bottom = 12.dp, end = 4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                repoUrl,
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(onClick = { loadRepo(repoUrl) }) {
+                                Icon(Icons.Filled.Refresh, contentDescription = "Reload repository")
+                            }
+                            IconButton(onClick = {
                                 Store.removeRepository(repoUrl)
                                 refresh()
-                            }.padding(8.dp).size(18.dp)
-                        )
-                    }
-                    repoState[repoUrl]?.let {
-                        Text(it, fontSize = 11.sp, color = Cine.c.textMuted)
-                    }
-                    repoPlugins[repoUrl]?.forEach { plugin ->
-                        Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(plugin.name, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, color = Cine.c.text)
-                                Text(
-                                    buildString {
-                                        append("v${plugin.version}")
-                                        if (plugin.authors.isNotEmpty()) append("  •  ${plugin.authors.joinToString(", ")}")
-                                        if (plugin.language != null) append("  •  ${plugin.language}")
-                                    },
-                                    fontSize = 10.5.sp,
-                                    color = Cine.c.textMuted,
-                                    maxLines = 1
-                                )
-                            }
-                            Button(onClick = {
-                                scope.launch {
-                                    val (ok, message) = withContext(Dispatchers.IO) {
-                                        ExtensionManager.install(context, plugin)
-                                    }
-                                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
-                                    if (ok) {
-                                        if (Store.activeProvider.isNullOrBlank()) {
-                                            Providers.all().firstOrNull()?.let { Providers.select(it) }
-                                        }
-                                        refresh()
-                                    }
+                            }) { Icon(Icons.Filled.Close, contentDescription = "Remove repository") }
+                        }
+                        repoState[repoUrl]?.let {
+                            Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        repoPlugins[repoUrl]?.forEach { plugin ->
+                            HorizontalDivider(Modifier.padding(top = 8.dp, end = 12.dp))
+                            Row(Modifier.padding(top = 8.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(plugin.name, style = MaterialTheme.typography.titleSmall)
+                                    Text(
+                                        buildString {
+                                            append("v${plugin.version}")
+                                            if (plugin.authors.isNotEmpty()) append("  •  ${plugin.authors.joinToString(", ")}")
+                                            if (plugin.language != null) append("  •  ${plugin.language}")
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
                                 }
-                            }) { Text("Install") }
+                                val busy = plugin.url in installing
+                                FilledTonalButton(
+                                    enabled = !busy,
+                                    onClick = {
+                                        installing = installing + plugin.url
+                                        scope.launch {
+                                            val (ok, message) = ExtensionManager.install(context, plugin)
+                                            installing = installing - plugin.url
+                                            say(message)
+                                            if (ok) {
+                                                if (Store.activeProvider.isNullOrBlank()) {
+                                                    Providers.all().firstOrNull()?.let { Providers.select(it) }
+                                                }
+                                                refresh()
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    if (busy) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    else Text("Install")
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-
-        item { Spacer(Modifier.height(30.dp)) }
     }
 
     diagnostics?.let { text ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = { diagnostics = null },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { diagnostics = null }) { Text("Close") }
-            },
+            confirmButton = { TextButton(onClick = { diagnostics = null }) { Text("Close") } },
             title = { Text("Extension log") },
             text = {
-                androidx.compose.foundation.layout.Box(Modifier.height(360.dp)) {
-                    LazyColumn {
-                        item {
-                            Text(text, fontSize = 10.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Box(Modifier.height(360.dp)) {
+                    SelectionContainer {
+                        LazyColumn {
+                            item { Text(text, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace) }
                         }
                     }
                 }
             }
         )
     }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp)
+    )
+}
+
+@Composable
+private fun Muted(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

@@ -1,147 +1,221 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+
 package com.primebox.compose
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.primebox.data.Card
 import com.primebox.data.Store
 import com.primebox.ext.Providers
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 @Composable
-fun SearchScreen(onOpenDetail: (Card) -> Unit, onBack: () -> Unit) {
-    val context = LocalContext.current
+fun SearchScreen(
+    onOpenDetail: (Card, String) -> Unit,
+    onOpenExtensions: () -> Unit,
+    onBack: () -> Unit
+) {
     val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = remember { FocusRequester() }
+
+    var query by rememberSaveable { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Card>>(emptyList()) }
-    var status by remember { mutableStateOf("") }
+    var searched by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var noExtension by remember { mutableStateOf(false) }
     var recent by remember { mutableStateOf(Store.recentSearches()) }
+    var job by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(Unit) {
+        delay(150)
+        runCatching { focus.requestFocus() }
+    }
 
     fun runSearch(text: String) {
+        val q = text.trim()
+        if (q.isEmpty()) return
+        keyboard?.hide()
         val api = Providers.active()
         if (api == null) {
-            status = "NO EXTENSION INSTALLED"
+            noExtension = true
             return
         }
-        if (text.isBlank()) return
-        Store.addRecentSearch(text)
+        noExtension = false
+        Store.addRecentSearch(q)
         recent = Store.recentSearches()
+        job?.cancel() // an older, slower search must not overwrite the newest one
         loading = true
-        status = "SEARCHING…"
-        scope.launch {
-            val found = withContext(Dispatchers.IO) {
-                runCatching { withTimeout(25_000) { api.search(text) } }.getOrNull().orEmpty()
+        error = null
+        job = scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { withTimeout(25_000) { api.search(q) } }
             }
             loading = false
-            results = found.map { Card.from(it) }
-            status = if (found.isEmpty()) "NO RESULTS" else "${found.size} RESULTS"
+            searched = true
+            results = outcome.getOrNull().orEmpty().map { Card.from(it) }
+            error = outcome.exceptionOrNull()?.message?.let { "Search failed: $it" }
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(horizontal = 18.dp)
-    ) {
-        Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            androidx.compose.material3.Icon(
-                Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "Back",
-                tint = Cine.c.text,
-                modifier = Modifier.padding(end = 12.dp).clickable { onBack() }.size(22.dp)
-            )
-            Text("Search", style = MaterialTheme.typography.headlineSmall, color = Cine.c.text)
-        }
-
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            placeholder = { Text("Search movies, series, anime…") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { runSearch(query) }),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp)
-        )
-
-        Text(
-            status,
-            fontSize = 10.5.sp,
-            color = Cine.c.textMuted,
-            modifier = Modifier.padding(top = 10.dp)
-        )
-
-        if (recent.isNotEmpty() && results.isEmpty()) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(top = 10.dp)
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        topBar = {
+            Row(
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(recent) { item ->
-                    PillChip(item, false) {
-                        query = item
-                        runSearch(item)
-                    }
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 }
+                TextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    placeholder = { Text("Search movies, series, anime…") },
+                    singleLine = true,
+                    shape = CircleShape,
+                    colors = TextFieldDefaults.colors(
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+                    trailingIcon = {
+                        if (query.isNotEmpty()) {
+                            IconButton(onClick = { query = ""; focus.requestFocus() }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear")
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { runSearch(query) }),
+                    modifier = Modifier.weight(1f).focusRequester(focus)
+                )
             }
         }
+    ) { inner ->
+        Column(Modifier.fillMaxSize().padding(inner)) {
+            if (loading) WavyProgress(progress = null, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
 
-        if (loading) {
-            CircularProgressIndicator(
-                color = Cine.c.accent,
-                modifier = Modifier.padding(top = 20.dp).height(26.dp)
-            )
-        }
+            when {
+                noExtension -> EmptyState(
+                    icon = Icons.Filled.Extension,
+                    title = "No extension installed",
+                    body = "Search needs a source. Add an extension first.",
+                    actionLabel = "Open extensions",
+                    onAction = onOpenExtensions
+                )
 
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(results) { card ->
-                PosterCard(card, width = 104, height = 150) { onOpenDetail(card) }
+                error != null -> EmptyState(
+                    icon = Icons.Filled.CloudOff,
+                    title = "Something went wrong",
+                    body = error.orEmpty(),
+                    actionLabel = "Try again",
+                    onAction = { runSearch(query) }
+                )
+
+                searched && !loading && results.isEmpty() -> EmptyState(
+                    icon = Icons.Filled.SearchOff,
+                    title = "No results",
+                    body = "Try another title, or switch the source on the home screen."
+                )
+
+                results.isNotEmpty() -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(110.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(results) { card ->
+                        PosterCard(card = card, width = null, onClick = { onOpenDetail(card, "search|${card.url}") })
+                    }
+                }
+
+                recent.isNotEmpty() && !loading -> Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Recent searches",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = {
+                            Store.clearRecentSearches()
+                            recent = emptyList()
+                        }) { Text("Clear") }
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        recent.forEach { item ->
+                            AssistChip(
+                                onClick = {
+                                    query = item
+                                    runSearch(item)
+                                },
+                                label = { Text(item) },
+                                leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) }
+                            )
+                        }
+                    }
+                }
+
+                else -> Box(Modifier.fillMaxSize())
             }
         }
     }
 }
-

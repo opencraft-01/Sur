@@ -26,6 +26,9 @@ object Net {
         }
     }
 
-    /** True when the app should avoid optional traffic (thumbnails, prefetch, auto refresh). */
-    fun shouldSaveData(context: Context): Boolean = Store.dataSaver || isMetered(context)
+    /**
+     * True when the app should avoid optional traffic (prefetch, background checks):
+     * the data saver is on AND the current network is metered. Wi-Fi is never throttled.
+     */
+    fun shouldSaveData(context: Context): Boolean = Store.dataSaver && isMetered(context)
 }
