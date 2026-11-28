@@ -223,7 +223,6 @@ fun Modifier.glass(shape: Shape = RoundedCornerShape(16.dp), strong: Boolean = f
         .then(shadowMod)
         .clip(shape)
         .background(fill)
-        .border(1.dp, if (c.isDark) c.glassBorder else c.text.copy(alpha = 0.10f), shape)
 }
 
 @Composable
@@ -579,24 +578,6 @@ fun EpisodeCard(
 @Composable
 fun MovieCardSkeleton(width: Dp = 118.dp, height: Dp = 177.dp) {
     Box(Modifier.width(width).height(height).clip(RoundedCornerShape(10.dp)).shimmer())
-}
-
-@Composable
-fun PerspectiveFloor(modifier: Modifier = Modifier) {
-    val c = Cine.c
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val line = (if (c.isDark) Color.White else Color.Black).copy(alpha = 0.06f)
-        for (i in 0..6) {
-            val t = i / 6f
-            val y = h * t * t
-            drawLine(line, Offset(0f, y), Offset(w, y), 1.5f)
-        }
-        for (i in -7..7) {
-            drawLine(line, Offset(w / 2f + i * (w / 40f), 0f), Offset(w / 2f + i * (w / 5f), h), 1.5f)
-        }
-    }
 }
 
 fun glowText(color: Color) = TextStyle(shadow = Shadow(color.copy(alpha = 0.85f), Offset.Zero, 28f))

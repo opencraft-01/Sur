@@ -24,6 +24,10 @@ object Store {
 
     // -------------------------------------------------------------- providers
 
+    var activeProviderKey: String?
+        get() = sp.getString("active_provider_key", null)
+        set(value) = sp.edit().putString("active_provider_key", value).apply()
+
     var activeProvider: String?
         get() = sp.getString("active_provider", null)
         set(value) = sp.edit().putString("active_provider", value).apply()
