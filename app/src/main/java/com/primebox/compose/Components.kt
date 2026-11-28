@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalSharedTransitionApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@file:OptIn(ExperimentalSharedTransitionApi::class)
 
 package com.primebox.compose
 
@@ -29,11 +29,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -102,13 +100,88 @@ fun Modifier.shimmer(): Modifier {
     }
 }
 
-/** Material 3 expressive wavy progress. `progress == null` means indeterminate. */
+/** Smooth wavy progress line. `progress == null` means indeterminate. */
 @Composable
 fun WavyProgress(progress: Float?, modifier: Modifier = Modifier) {
-    if (progress == null) {
-        LinearWavyProgressIndicator(modifier = modifier.fillMaxWidth())
-    } else {
-        LinearWavyProgressIndicator(progress = { progress.coerceIn(0f, 1f) }, modifier = modifier.fillMaxWidth())
+    val accent = MaterialTheme.colorScheme.primary
+    val track = MaterialTheme.colorScheme.surfaceContainerHigh
+    val animated by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = (progress ?: 0f).coerceIn(0f, 1f),
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = 0.85f,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
+        ),
+        label = "wavyValue"
+    )
+    val transition = rememberInfiniteTransition(label = "wave")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2 * kotlin.math.PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(2400, easing = LinearEasing), RepeatMode.Restart),
+        label = "wavePhase"
+    )
+    val sweep by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1700, easing = LinearEasing), RepeatMode.Restart),
+        label = "waveSweep"
+    )
+
+    androidx.compose.foundation.Canvas(modifier = modifier.fillMaxWidth().height(20.dp)) {
+        val band = 5.dp.toPx()
+        val cy = size.height / 2f
+        val startX = band / 2f + 1f
+        val endX = size.width - band / 2f - 1f
+        if (endX <= startX) return@Canvas
+        val width = endX - startX
+
+        drawLine(
+            color = track,
+            start = androidx.compose.ui.geometry.Offset(startX, cy),
+            end = androidx.compose.ui.geometry.Offset(endX, cy),
+            strokeWidth = band,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round
+        )
+
+        val from: Float
+        val to: Float
+        if (progress == null) {
+            val seg = width * 0.32f
+            from = startX + ((sweep * (width + seg)) - seg).coerceIn(0f, width)
+            to = (from + seg).coerceIn(startX, endX)
+        } else {
+            from = startX
+            to = startX + width * animated
+        }
+        if (to - from < 2f) return@Canvas
+
+        val amplitude = 2.2.dp.toPx()
+        val wavelength = 64.dp.toPx()
+        val path = androidx.compose.ui.graphics.Path()
+        var x = from
+        path.moveTo(x, cy + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+        while (x <= to) {
+            path.lineTo(x, cy + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+            x += 2f
+        }
+        x = to
+        while (x >= from) {
+            path.lineTo(x, cy + band / 2f + amplitude * kotlin.math.sin((x / wavelength) * 2 * kotlin.math.PI.toFloat() + phase))
+            x -= 2f
+        }
+        path.close()
+
+        drawPath(
+            path = path,
+            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                colors = listOf(accent.copy(alpha = 0.55f), accent),
+                startX = from,
+                endX = to.coerceAtLeast(from + 1f)
+            )
+        )
+        val headY = cy + amplitude * kotlin.math.sin((to / wavelength) * 2 * kotlin.math.PI.toFloat() + phase)
+        drawCircle(color = accent.copy(alpha = 0.22f), radius = band * 0.9f, center = androidx.compose.ui.geometry.Offset(to, headY))
+        drawCircle(color = accent, radius = band * 0.5f, center = androidx.compose.ui.geometry.Offset(to, headY))
     }
 }
 
