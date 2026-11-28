@@ -52,17 +52,11 @@ fun LibraryScreen(
 ) {
     val context = LocalContext.current
     var mode by remember { mutableStateOf(0) } // 0 downloads, 1 history
-    var downloads by remember { mutableStateOf(Downloader.all()) }
+    // reading revision subscribes the screen to every progress tick
+    val downloadRevision = Downloader.revision
+    val downloads = remember(downloadRevision) { Downloader.all() }
     var history by remember { mutableStateOf(Store.history()) }
 
-    DisposableEffect(Unit) {
-        Downloader.listen {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                downloads = Downloader.all()
-            }
-        }
-        onDispose { Downloader.listen(null) }
-    }
 
     Column(
         Modifier
@@ -102,10 +96,7 @@ fun LibraryScreen(
                                     Downloader.start(context, item)
                                 }
                             },
-                            onDelete = {
-                                Downloader.delete(item)
-                                downloads = Downloader.all()
-                            }
+                            onDelete = { Downloader.delete(item) }
                         )
                     }
                 }

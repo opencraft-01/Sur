@@ -281,17 +281,17 @@ fun EmptyState(
 }
 
 /**
- * Premium Material-3 style progress line: a calm travelling wave over the filled
- * part, spring-animated fill and a soft head dot. Amplitude is deliberately tiny
- * so it reads as a smooth line, not a zigzag.
+ * Liquid progress line: a smooth sine band that fills from the left, with a
+ * spring-animated value and a soft head glow. Indeterminate mode slides a
+ * segment across the track.
  */
 @Composable
 fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: Boolean = false) {
     val animated by androidx.compose.animation.core.animateFloatAsState(
         targetValue = progress.coerceIn(0f, 1f),
         animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.9f,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+            dampingRatio = 0.85f,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
         ),
         label = "wavyProgress"
     )
@@ -300,7 +300,7 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: 
         initialValue = 0f,
         targetValue = (2 * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = LinearEasing),
+            animation = tween(2400, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "wavePhase"
@@ -309,63 +309,79 @@ fun WavyProgress(progress: Float, modifier: Modifier = Modifier, indeterminate: 
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = LinearEasing),
+            animation = tween(1700, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "sweep"
     )
 
-    val track = Cine.c.glass
-    val accent = Cine.c.accent
-    val accentSoft = Cine.c.accent.copy(alpha = 0.45f)
+    val track = MaterialTheme.colorScheme.surfaceContainerHigh
+    val accent = MaterialTheme.colorScheme.primary
+    val accentSoft = MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
 
-    androidx.compose.foundation.Canvas(modifier = modifier.height(20.dp).fillMaxWidth()) {
-        val stroke = 4.5.dp.toPx()
+    androidx.compose.foundation.Canvas(modifier = modifier.height(24.dp).fillMaxWidth()) {
+        val band = 6.dp.toPx()
         val cy = size.height / 2f
-        val startX = stroke / 2f + 1f
-        val endX = size.width - stroke / 2f - 1f
+        val pad = band / 2f + 1f
+        val startX = pad
+        val endX = size.width - pad
         if (endX <= startX) return@Canvas
+        val width = endX - startX
 
+        // track
         drawLine(
             color = track,
             start = Offset(startX, cy),
             end = Offset(endX, cy),
-            strokeWidth = stroke,
+            strokeWidth = band,
             cap = StrokeCap.Round
         )
 
-        val from = if (indeterminate) startX + (endX - startX) * ((sweep * 1.4f) % 1f) - (endX - startX) * 0.25f else startX
-        val to = if (indeterminate) from + (endX - startX) * 0.3f else startX + (endX - startX) * animated
-        val a = from.coerceIn(startX, endX)
-        val b = to.coerceIn(startX, endX)
-        if (b <= a + 1f) return@Canvas
+        val from: Float
+        val to: Float
+        if (indeterminate) {
+            val seg = width * 0.32f
+            from = startX + ((sweep * (width + seg)) - seg).coerceIn(0f, width)
+            to = (from + seg).coerceIn(startX, endX)
+        } else {
+            from = startX
+            to = startX + width * animated
+        }
+        if (to - from < 2f) return@Canvas
 
-        // gentle wave: 2dp amplitude, 60dp wavelength — visible but calm
-        val amplitude = 2.dp.toPx()
-        val wavelength = 60.dp.toPx()
+        // smooth sine band between two curves
+        val amplitude = 2.6.dp.toPx()
+        val wavelength = 68.dp.toPx()
         val path = Path()
-        path.moveTo(a, cy)
-        var x = a
-        while (x < b) {
+        var x = from
+        path.moveTo(x, cy + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase))
+        while (x <= to) {
             val y = cy + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase)
             path.lineTo(x, y)
             x += 2f
         }
-        val endY = cy + amplitude * sin((b / wavelength) * 2 * PI.toFloat() + phase)
-        path.lineTo(b, endY)
+        // walk back along the lower edge to make a closed band
+        x = to
+        while (x >= from) {
+            val y = cy + band / 2f + amplitude * sin((x / wavelength) * 2 * PI.toFloat() + phase)
+            path.lineTo(x, y)
+            x -= 2f
+        }
+        path.close()
 
         drawPath(
             path = path,
             brush = Brush.horizontalGradient(
                 colors = listOf(accentSoft, accent),
-                startX = a,
-                endX = b
-            ),
-            style = Stroke(width = stroke, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round)
+                startX = from,
+                endX = to.coerceAtLeast(from + 1f)
+            )
         )
-        // soft head
-        drawCircle(color = accent.copy(alpha = 0.25f), radius = stroke * 1.1f, center = Offset(b, endY))
-        drawCircle(color = accent, radius = stroke * 0.62f, center = Offset(b, endY))
+
+        // rounded head + glow
+        val headY = cy + amplitude * sin((to / wavelength) * 2 * PI.toFloat() + phase)
+        drawCircle(color = accent.copy(alpha = 0.22f), radius = band * 0.95f, center = Offset(to, headY))
+        drawCircle(color = accent, radius = band * 0.5f, center = Offset(to, headY))
     }
 }
 

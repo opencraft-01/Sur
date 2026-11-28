@@ -54,6 +54,10 @@ object Downloader {
     private val items = LinkedHashMap<String, Item>()
     private var listener: (() -> Unit)? = null
 
+    /** Bumped on every progress tick so Compose screens recompose live. */
+    var revision by androidx.compose.runtime.mutableIntStateOf(0)
+        private set
+
     fun listen(block: (() -> Unit)?) {
         listener = block
     }
@@ -327,6 +331,7 @@ object Downloader {
     // -------------------------------------------------------------- plumbing
 
     private fun notifyChanged() {
+        revision++
         runCatching { listener?.invoke() }
     }
 

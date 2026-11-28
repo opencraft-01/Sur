@@ -200,7 +200,6 @@ fun AppBackground(content: @Composable () -> Unit) {
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(c.bgTop, c.bgBottom)))
     ) {
-        PerspectiveFloor(Modifier.fillMaxSize())
         content()
     }
 }

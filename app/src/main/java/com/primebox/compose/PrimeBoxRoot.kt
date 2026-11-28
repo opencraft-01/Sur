@@ -136,15 +136,12 @@ fun PrimeBoxRoot(
                 transitionSpec = {
                     when {
                         // details rides up like a sheet, then drops away on back
+                        // the poster flies between screens, so the page itself only fades
                         targetState is Route.Detail ->
-                            (slideInVertically(
-                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 380f),
-                                initialOffsetY = { it }
-                            ) + fadeIn(tween(120))) togetherWith fadeOut(tween(90))
+                            fadeIn(tween(260)) togetherWith fadeOut(tween(160))
 
                         initialState is Route.Detail ->
-                            fadeIn(tween(200)) togetherWith
-                                (slideOutVertically(tween(240), targetOffsetY = { it }) + fadeOut(tween(180)))
+                            fadeIn(tween(240)) togetherWith fadeOut(tween(180))
 
                         else -> fadeIn(tween(220)) togetherWith fadeOut(tween(120))
                     }

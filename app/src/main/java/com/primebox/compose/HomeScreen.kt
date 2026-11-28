@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shuffle
@@ -149,7 +150,12 @@ fun HomeScreen(
             if (filtered.isEmpty()) null else row.copy(items = filtered)
         }
     }
-    val heroItems = visibleRows.firstOrNull()?.items?.take(5).orEmpty()
+    // rotate the hero window on every reload so the banners change instead of repeating
+    val heroItems = remember(visibleRows, reload) {
+        val pool = visibleRows.flatMap { it.items }
+        if (pool.isEmpty()) emptyList()
+        else (0 until minOf(6, pool.size)).map { pool[(it + reload * 3) % pool.size] }
+    }
 
     LaunchedEffect(randomTick) {
         if (randomTick <= 0) return@LaunchedEffect
@@ -201,7 +207,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 110.dp)
         ) {
             item {
-                HomeTopBar(onOpenSearch, onOpenExtensions, onOpenSettings)
+                HomeTopBar(onOpenSearch, onOpenExtensions, onOpenSettings, onRefresh = { reload++ })
             }
 
             if (heroItems.isNotEmpty()) {
@@ -325,7 +331,12 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeTopBar(onOpenSearch: () -> Unit, onOpenExtensions: () -> Unit, onOpenSettings: () -> Unit) {
+private fun HomeTopBar(
+    onOpenSearch: () -> Unit,
+    onOpenExtensions: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onRefresh: () -> Unit
+) {
     Column(Modifier.fillMaxWidth().statusBarsPadding().padding(top = 10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -339,6 +350,8 @@ private fun HomeTopBar(onOpenSearch: () -> Unit, onOpenExtensions: () -> Unit, o
                 style = glowText(Cine.c.accent.copy(alpha = 0.55f)),
                 modifier = Modifier.weight(1f)
             )
+            GlassIconButton(Icons.Filled.Refresh, onRefresh, size = 38.dp)
+            Spacer(Modifier.width(8.dp))
             GlassIconButton(Icons.Filled.Settings, onOpenSettings, size = 38.dp)
             Spacer(Modifier.width(8.dp))
             GlassIconButton(Icons.Filled.Layers, onOpenExtensions, size = 38.dp)

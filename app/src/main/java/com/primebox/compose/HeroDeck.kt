@@ -94,9 +94,13 @@ fun HeroStage(
         if (!touching) {
             while (true) {
                 delay(4200)
-                val next = progress.value.roundToInt() + 1
-                if (next > n - 1) break
-                progress.animateTo(next.toFloat(), tween(650, easing = FastOutSlowInEasing))
+                val next = (progress.value.roundToInt() + 1) % n
+                if (next == 0) {
+                    // glide back to the first card so the deck keeps cycling
+                    progress.animateTo(0f, tween(700, easing = FastOutSlowInEasing))
+                } else {
+                    progress.animateTo(next.toFloat(), tween(650, easing = FastOutSlowInEasing))
+                }
             }
         }
     }
@@ -252,7 +256,7 @@ private fun DeckCard(
     ) {
         PosterArt(
             movie,
-            Modifier.fillMaxSize().then(if (isCenter) Modifier.sharedPoster(ctx, "poster-hero-${movie.id}") else Modifier),
+            Modifier.fillMaxSize().then(if (isCenter) Modifier.sharedPoster(ctx, "poster-${movie.videoUrl}") else Modifier),
             showTitle = true,
             titleSize = 34.sp
         )
